@@ -17,7 +17,7 @@ export enum NodeType {
   DisplayText = 'Display Text',
   Sketchpad = 'Sketchpad',
   LocalModelFileSelector = 'Local Model File Selector',
-  MultiPromptNode = 'Assemble Final Scene Prompt', // Matched name from test data
+  MultiPromptNode = 'Assemble Final Scene Prompt',
 }
 
 export interface Port {
@@ -136,7 +136,9 @@ export interface CanvasComponentProps {
   edges: Edge[];
   onNodeDrag: (nodeId: string, x: number, y: number) => void;
   setNodes: React.Dispatch<React.SetStateAction<NodeData[]>>;
-  setEdges: React.Dispatch<React.SetStateAction<Edge[]>>;
+  onAddEdge: (edge: Edge) => void;
+  onInteractionEnd: () => void;
+  onAddNode: (agentConfig: DynamicNodeConfig, worldPoint: Point) => void;
   executeNode: (nodeId: string) => Promise<NodeData['status']>;
   updateNodeInternalState: (nodeId: string, dataChanges: Partial<NodeData['data']>, status?: NodeData['status'], error?: string | null, executionTime?: string, suggestion?: string, isSuggestionLoading?: boolean) => void;
   onRemoveNode: (nodeId: string) => void;
@@ -147,7 +149,7 @@ export interface CanvasComponentProps {
 }
 
 export interface BugReport {
-  id: string; // Combination of error message and stack to group similar errors
+  id: string;
   error: {
     message: string;
     stack?: string;
@@ -172,6 +174,23 @@ export type NodeExecutionFunction = (
   appMode: AppMode
 ) => Promise<NodeExecutionResult>;
 
+export interface ExecutionHistoryEntry {
+  id: string;
+  nodeName: string;
+  nodeIcon: ReactNode | string;
+  status: 'success' | 'error';
+  timestamp: string;
+  executionTime: string;
+  error?: string | null;
+}
+
+export interface SavedWorkflow {
+    name: string;
+    nodes: NodeData[];
+    edges: Edge[];
+    lastSaved: string;
+}
+
 
 // --- Echo Project Types ---
 export type TaskStatus = 'upcoming' | 'current' | 'completed';
@@ -189,5 +208,6 @@ export interface EchoTask {
     title?: string;
     body?: string;
     imagePrompt?: string;
-  }
+  };
+  duration?: number;
 }

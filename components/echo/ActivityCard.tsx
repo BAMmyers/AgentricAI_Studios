@@ -44,8 +44,11 @@ const ActivityCard: React.FC<ActivityCardProps> = ({ task, onStartTask }) => {
 
         {task.status === 'completed' && (
           <div className="absolute inset-0 bg-black bg-opacity-50 rounded-xl flex items-center justify-center">
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-24 w-24 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-24 w-24 text-green-400" viewBox="0 0 24 24">
+              <g fill="none" stroke="currentColor" strokeWidth="2">
+                <path className="completed-checkmark-circle" strokeLinecap="round" strokeLinejoin="round" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                <path className="completed-checkmark-check" strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4" />
+              </g>
             </svg>
           </div>
         )}

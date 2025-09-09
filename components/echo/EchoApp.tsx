@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+
+import React, { useState, useEffect, useRef } from 'react';
 import type { EchoTask, TaskStatus } from '../../src/core/types';
 import { initialEchoTasks } from '../../src/core/echoData';
 import Timeline from './Timeline';
@@ -13,6 +14,9 @@ const EchoApp: React.FC = () => {
   const [interactionLog, setInteractionLog] = useState<string[]>([]);
   const [feedback, setFeedback] = useState<string | null>(null);
   const [isFeedbackLoading, setIsFeedbackLoading] = useState(false);
+  const [timeLeft, setTimeLeft] = useState<number | null>(null);
+  const timerRef = useRef<number | null>(null);
+
 
   useEffect(() => {
     // On mount, find the first 'upcoming' task and set it as 'current'
@@ -23,6 +27,34 @@ const EchoApp: React.FC = () => {
       ));
     }
   }, []); // Run only once on mount
+  
+  useEffect(() => {
+    if (currentActivity && currentActivity.duration) {
+      setTimeLeft(currentActivity.duration * 60); // minutes to seconds
+
+      if (timerRef.current) window.clearInterval(timerRef.current);
+
+      timerRef.current = window.setInterval(() => {
+        setTimeLeft(prevTime => {
+          if (prevTime === null || prevTime <= 1) {
+            window.clearInterval(timerRef.current!);
+            // Optionally, trigger auto-completion here in the future
+            return 0;
+          }
+          return prevTime - 1;
+        });
+      }, 1000);
+    } else {
+      if (timerRef.current) window.clearInterval(timerRef.current);
+      timerRef.current = null;
+      setTimeLeft(null);
+    }
+
+    // Cleanup
+    return () => {
+      if (timerRef.current) window.clearInterval(timerRef.current);
+    };
+  }, [currentActivity]);
 
   const handleStartTask = (taskId: string) => {
     const taskToStart = tasks.find(t => t.id === taskId);
@@ -78,11 +110,29 @@ const EchoApp: React.FC = () => {
     });
   };
 
+  const formatTime = (seconds: number | null): string => {
+    if (seconds === null) return '00:00';
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+  };
+
   return (
     <div className="flex-grow flex flex-col bg-black text-gray-200 overflow-hidden">
-      <div className="p-4 border-b border-neutral-800">
-        <h2 className="text-2xl font-bold text-center text-green-400">Echo Project Daily Schedule</h2>
-        <p className="text-center text-sm text-gray-400">A dynamic, adaptive companion for learning and growth.</p>
+      <div className="p-4 border-b border-neutral-800 flex items-center justify-between">
+        <div className="w-1/3"></div> {/* Left spacer */}
+        <div className="w-1/3 text-center">
+          <h2 className="text-2xl font-bold text-green-400">Echo Project Daily Schedule</h2>
+          <p className="text-sm text-gray-400">A dynamic, adaptive companion for learning and growth.</p>
+        </div>
+        <div className="w-1/3 flex justify-end items-center pr-4">
+          {currentActivity && timeLeft !== null && (
+            <div className="bg-neutral-900 border-2 border-neutral-700 rounded-lg px-4 py-2 text-center shadow-lg">
+              <p className="text-xs text-gray-400 uppercase tracking-wider">Time Remaining</p>
+              <p className="text-4xl font-mono font-bold text-sky-400">{formatTime(timeLeft)}</p>
+            </div>
+          )}
+        </div>
       </div>
       <Timeline tasks={tasks} onStartTask={handleStartTask} />
 

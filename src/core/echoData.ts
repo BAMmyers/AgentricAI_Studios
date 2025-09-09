@@ -14,7 +14,8 @@ export const initialEchoTasks: EchoTask[] = [
         title: 'The Little Astronaut\'s Big Adventure',
         body: 'Once upon a time, in a galaxy not so far away, lived a brave little astronaut named Alex. Alex had a shiny silver spaceship and a robot dog named Sparky. One sunny morning, Alex and Sparky decided to fly to the Marshmallow Moon...',
         imagePrompt: 'A child astronaut in a cute silver spaceship with a robot dog, flying towards a moon that looks like a marshmallow, cartoon style.'
-    }
+    },
+    duration: 15,
   },
   {
     id: 'task-2',
@@ -27,7 +28,8 @@ export const initialEchoTasks: EchoTask[] = [
     content: {
         title: 'Counting Stars!',
         body: 'Let\'s count the stars! If you have 3 stars and you find 2 more, how many stars do you have in total?'
-    }
+    },
+    duration: 10,
   },
   {
     id: 'task-3',
@@ -40,7 +42,8 @@ export const initialEchoTasks: EchoTask[] = [
     content: {
         title: 'Draw a Friendly Alien',
         body: 'Let\'s draw a new friend! Imagine a friendly alien from the planet Glimmer. Does it have three eyes? Does it have sparkly antennae? Let\'s see your creation!'
-    }
+    },
+    duration: 20,
   },
   {
     id: 'task-4',
@@ -53,7 +56,8 @@ export const initialEchoTasks: EchoTask[] = [
     content: {
         title: 'Time for Lunch!',
         body: 'Enjoy your delicious meal!'
-    }
+    },
+    duration: 25,
   },
   {
     id: 'task-5',
@@ -66,7 +70,8 @@ export const initialEchoTasks: EchoTask[] = [
     content: {
         title: 'Let\'s Write Our Name',
         body: 'Practice writing the letters of your name. You can do it!'
-    }
+    },
+    duration: 10,
   },
     {
     id: 'task-6',
@@ -79,6 +84,7 @@ export const initialEchoTasks: EchoTask[] = [
      content: {
         title: 'Time for Fun!',
         body: 'Enjoy your free play time with your favorite toys!'
-    }
+    },
+    duration: 30,
   },
 ];
