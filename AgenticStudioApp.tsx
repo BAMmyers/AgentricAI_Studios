@@ -75,7 +75,6 @@ const AgenticStudioApp: React.FC = () => {
       setHistoryIndex(newHistory.length - 1);
   }, [history, historyIndex]);
 
-  // FIX: Implement undo and redo functions for history navigation.
   const undo = useCallback(() => {
     if (canUndo) {
       const newIndex = historyIndex - 1;
@@ -150,10 +149,8 @@ const AgenticStudioApp: React.FC = () => {
     localStorage.setItem(AUTOSAVE_AGENTS_KEY, JSON.stringify(customAgents));
   }, [availableAgents]);
   
-  // FIX: Add keyboard shortcuts for undo (Ctrl+Z) and redo (Ctrl+Y).
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Prevent undo/redo when typing in an input field
       if ((e.target as HTMLElement).tagName.toLowerCase() === 'input' || (e.target as HTMLElement).tagName.toLowerCase() === 'textarea') {
         return;
       }
@@ -177,7 +174,7 @@ const AgenticStudioApp: React.FC = () => {
     setNodes(prevNodes => prevNodes.map(n => n.id === nodeId ? { ...n, x, y } : n));
   }, []);
 
-  const addNodeToCanvas = useCallback((agentConfig: DynamicNodeConfig, worldPoint: Point) => {
+  const onAddNode = useCallback((agentConfig: DynamicNodeConfig, worldPoint: Point) => {
     const newNodeId = `${agentConfig.name.replace(/\s+/g, '_')}-${Date.now()}`;
     const baseNodeData: NodeData['data'] = {};
     agentConfig.inputs.forEach(inputDef => {
@@ -323,14 +320,10 @@ const AgenticStudioApp: React.FC = () => {
         if (!isWorkflowRunning && highlightedNodeId === nodeId) {
             setHighlightedNodeId(null);
         }
-        // Add to execution history
         setExecutionHistory(prev => [{
             id: `${nodeId}-${Date.now()}`,
             nodeName: node.name,
             nodeIcon: node.icon || '⚙️',
-            // FIX: Cast finalStatus to the expected type for ExecutionHistoryEntry.
-            // The logic ensures it's either 'success' or 'error' at this point, but
-            // TypeScript's static analysis considers the broader NodeData['status'] type.
             status: finalStatus as 'success' | 'error',
             timestamp: new Date().toISOString(),
             executionTime: execTime,
@@ -463,21 +456,27 @@ const AgenticStudioApp: React.FC = () => {
       <header className="bg-neutral-950 p-2 shadow-md flex items-center justify-between border-b-4 border-dotted border-neutral-800 space-x-2 z-20">
         <div className="flex items-center space-x-2">
             <img src="data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAiIGhlaWdodD0iNDAiIHZpZXdCb3g9IjAgMCAxMjAgMTIwIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPgogIDxkZWZzPgogICAgPGxpbmVhckdyYWRpZW50IGlkPSJnbG93R3JhZGllbnQiIHgxPSIwJSIgeTE9IjAlIiB4Mj0iMTAwJSIgeTI9IjEwMCUiPgogICAgICA8c3RvcCBvZmZzZXQ9IjAlIiBzdHlsZT0ic3RvcC1jb2xvcjojMDBCN0QwOyBzdG9wLW9wYWNpdHk6MSIgLz4KICAgICAgPHN0b3Agb2Zmc2V0PSIxMDAlIiBzdHlsZT0ic3RvcC1jb2xvcjojOGE0QkFFOyBzdG9wLW9wYWNpdHk6MSIgLz4KICAgIDwvbGluZWFyR3JhZGllbnQ+CiAgPC9kZWZzPgogIDxnIHRyYW5zZm9ybT0idHJhbnNsYXRlKDYwIDYwKSBzY2FsZSgwLjgpIHRyYW5zbGF0ZSgtNjAgLTYwKSI+CiAgICAgIDxnPgogICAgICAgICAgPHBhdGggZD0iTTYwIDEwQTE1IDE1IDkwIDAgMSA2MCAyNUExNSAxNSAyNzAgMCAxIDYwIDEwWiIgZmlsbD0idXJsKCNnbG93R3JhZGllbnQpIiB0cmFuc2Zvcm09InJvdGF0ZSgzMCA2MCA2MCkiPgogICAgICAgICAgICA8YW5pbWF0ZVRyYW5zZm9ybSBhdHRyaWJ1dGVOYW1lPSJ0cmFuc2Zvcm0iIHR5cGU9InJvdGF0ZSIgZnJvbT0iMzAgNjAgNjAiIHRvPSIzOTIgNjAgNjAiIGR1cj0iMTVzIiByZXBlYXRDb3VudD0iaW5kZWZpbml0ZSIgLz4KICAgICAgICAgIDwvcGF0aD4KICAgICAgICAgIDxwYXRoIGQ9Ik02MCAxMEExNSA1NSA5MCAwIDEgNjAgMjVBMTUgMTUgMjcwIDAgMSA2MCAxMFoiIGZpbGw9InVybCgjZ2xvd0dyYWRpZW50KSIgdHJhbnNmb3JtPSJyb3RhdGUoMTUwIDYwIDYwKSI+CiAgICAgICAgICAgIDxhbmltYXRlVHJhbnNmb3JtIGF0dHJpYnV0ZU5hbWU9InRyYW5zZm9ybSIgdHlwZT0icm90YXRlIiBmcm9tPSIxNTAgNjAgNjAiIHRvPSI1MTIgNjAgNjAiIGR1cj0iMTVzIiByZXBlYXRDb3VudD0iaW5kZWZpbml0ZSIgLz4KICAgICAgICAgIDwvcGF0aD4KICAgICAgICAgIDxwYXRoIGQ9Ik02MCAxMEExNSA1NSA5MCAwIDEgNjAgMjVBMTUgMTUgMjcwIDAgMSA2MCAxMFoiIGZpbGw9InVybCgjZ2xvd0dyYWRpZW50KSIgdHJhbnNmb3JtPSJyb3RhdGUoMjcwIDYwIDYwKSI+CiAgICAgICAgICAgIDxhbmltYXRlVHJhbnNmb3JtIGF0dHJpYnV0ZU5hbWU9InRyYW5zZm9ybSIgdHlwZT0icm90YXRlIiBmcm9tPSIyNzAgNjAgNjAiIHRvPSI2MzIgNjAgNjAiIGR1cj0iMTVzIiByZXBlYXRDb3VudD0iaW5kZWZpbml0ZSIgLz4KICAgICAgICAgIDwvcGF0aD4KICAgICAgICAgIDxjaXJjbGUgY3g9IjYwIiBjeT0iNjAiIHI9IjEyIiBmaWxsPSIjMUEwRjJCIiBzdHJva2U9IiMwQkQ3RDAiIHN0cm9rZS11aWR0aD0iMiIvPgogICAgICAgICAgPGNpcmNsZSBjeD9iNjAiIGN5PSI2MCIgcj0iNSIgZmlsbD0idXJsKCNnbG93R3JhZGllbnQpIi8+CiAgICAgIDwvZz4KICA8L2c+Cjwvc3ZnPg==" alt="AgentricAI Logo" className="h-7 w-7" />
-            <h1 className="text-xl font-bold text-sky-400">AgentricAI Studios</h1>
+            <h1 className="text-xl font-bold text-sky-400 flex items-baseline">
+                <button onClick={undo} disabled={!canUndo} className="font-bold hover:text-white disabled:opacity-50 transition-colors" title="Undo (Ctrl+Z)">A</button>
+                <span>gentricAI Studio</span>
+                <button onClick={redo} disabled={!canRedo} className="font-bold hover:text-white disabled:opacity-50 transition-colors" title="Redo (Ctrl+Y)">s</button>
+            </h1>
         </div>
         <div className="flex-grow"></div>
         <div className="flex items-center space-x-2">
-            <button onClick={() => setShowDefineNodeModal(true)} className="bg-sky-600 hover:bg-sky-700 text-white px-3 py-1.5 rounded-md text-sm font-medium">
-                Define New Agent
+            <button onClick={() => setShowDefineNodeModal(true)} className="bg-sky-600 hover:bg-sky-700 text-white px-3 py-1.5 rounded-md text-sm font-medium flex items-center space-x-1.5">
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path d="M11 5a1 1 0 10-2 0v5H4a1 1 0 100 2h5v5a1 1 0 102 0v-5h5a1 1 0 100-2h-5V5z" /></svg>
+                <span className="hidden md:inline">Define New Agent</span>
             </button>
-            <button onClick={() => setAppMode('echo')} className="bg-purple-600 hover:bg-purple-700 text-white px-3 py-1.5 rounded-md text-sm font-medium">
-                Open Echo View
+            <button onClick={() => setAppMode('echo')} className="bg-purple-600 hover:bg-purple-700 text-white px-3 py-1.5 rounded-md text-sm font-medium flex items-center space-x-1.5">
+                 <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path d="M10 12a2 2 0 100-4 2 2 0 000 4z" /><path fillRule="evenodd" d="M.458 10C3.732 4.943 7.522 3 10 3s6.268 1.943 9.542 7c-3.274 5.057-7.03 7-9.542 7S3.732 15.057.458 10zM14 10a4 4 0 11-8 0 4 4 0 018 0z" clipRule="evenodd" /></svg>
+                <span className="hidden md:inline">Open Echo View</span>
             </button>
             <span className={`text-xs px-2 py-1 rounded-md ${llmConfig.activeRuntime === 'gemini' ? (GEMINI_API_KEY ? 'bg-green-600' : 'bg-red-600') : 'bg-sky-600'}`}>
                 {llmStatusMessage}
             </span>
             <button onClick={() => { setTempLlmConfig(llmConfig); setShowSettingsModal(true); }} className="p-1.5 rounded-md hover:bg-neutral-700" title="LLM Settings">
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" /><path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066 2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" /><path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
             </button>
             <button onClick={undo} disabled={!canUndo} className="p-1.5 rounded-md hover:bg-neutral-700 disabled:opacity-30 disabled:cursor-not-allowed" title="Undo (Ctrl+Z)">
                 <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M11 15l-3-3m0 0l3-3m-3 3h8M3 12a9 9 0 1118 0 9 9 0 01-18 0z" /></svg>
@@ -485,11 +484,13 @@ const AgenticStudioApp: React.FC = () => {
             <button onClick={redo} disabled={!canRedo} className="p-1.5 rounded-md hover:bg-neutral-700 disabled:opacity-30 disabled:cursor-not-allowed" title="Redo (Ctrl+Y)">
                 <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M13 15l3-3m0 0l-3-3m3 3H5m16 0a9 9 0 10-18 0 9 9 0 0018 0z" /></svg>
             </button>
-            <button onClick={runFullWorkflow} disabled={isWorkflowRunning || nodes.length === 0} className="bg-green-600 hover:bg-green-700 text-white px-3 py-1.5 rounded-md text-sm font-medium disabled:opacity-50" title="Run full workflow">
-                {isWorkflowRunning ? 'Running...' : 'Run Full Workflow'}
+            <button onClick={runFullWorkflow} disabled={isWorkflowRunning || nodes.length === 0} className="bg-green-600 hover:bg-green-700 text-white px-3 py-1.5 rounded-md text-sm font-medium disabled:opacity-50 flex items-center space-x-1.5" title="Run full workflow">
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clipRule="evenodd" /></svg>
+                <span className="hidden md:inline">{isWorkflowRunning ? 'Running...' : 'Run Full Workflow'}</span>
             </button>
-            <button onClick={() => { setNodes([]); setEdges([]); pushToHistory([], []); setExecutionHistory([]); }} className="bg-red-600 hover:bg-red-700 text-white px-3 py-1.5 rounded-md text-sm font-medium">
-                Clear Canvas
+            <button onClick={() => { setNodes([]); setEdges([]); pushToHistory([], []); setExecutionHistory([]); }} className="bg-red-600 hover:bg-red-700 text-white px-3 py-1.5 rounded-md text-sm font-medium flex items-center space-x-1.5">
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm4 0a1 1 0 012 0v6a1 1 0 11-2 0V8z" clipRule="evenodd" /></svg>
+                <span className="hidden md:inline">Clear Canvas</span>
             </button>
         </div>
       </header>
@@ -516,7 +517,7 @@ const AgenticStudioApp: React.FC = () => {
               setActiveDrawingToolNodeId={setActiveDrawingToolNodeId} isWorkflowRunning={isWorkflowRunning} 
               appMode={appMode} onRequestReview={(nodeId) => console.log(`Review requested for ${nodeId}`)}
               onInteractionEnd={handleInteractionEnd}
-              onAddNode={addNodeToCanvas}
+              onAddNode={onAddNode}
             />
         </div>
       </main>

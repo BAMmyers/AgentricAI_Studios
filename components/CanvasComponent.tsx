@@ -1,5 +1,6 @@
 
-import React, { useState, useCallback, useEffect, ForwardedRef, useMemo } from 'react';
+
+import React, { useState, useCallback, useEffect, ForwardedRef, useMemo, useRef } from 'react';
 import type { NodeData, Edge, Point, Port } from '../src/core/types';
 // Renamed CanvasComponentProps from App to avoid conflict with local definition
 import type { CanvasComponentProps as AppCanvasComponentInternalProps } from '../src/core/types';
@@ -105,6 +106,7 @@ const CanvasComponent = React.forwardRef<HTMLDivElement, CanvasComponentProps>(
   const [draggingState, setDraggingState] = useState<DraggingState | null>(null);
   const [connectingState, setConnectingState] = useState<ConnectingState | null>(null);
   const [hoveredEdgeId, setHoveredEdgeId] = useState<string | null>(null);
+  const pinchStartDistance = useRef<number | null>(null);
 
   useEffect(() => {
     onViewTransformChange(viewTransform);
@@ -184,32 +186,16 @@ const CanvasComponent = React.forwardRef<HTMLDivElement, CanvasComponentProps>(
       return;
     }
 
-    // If drawing lock is active, many interactions are disabled.
-    // Sketchpad itself handles its internal drawing if it's the activeDrawingToolNodeId.
-    // CanvasComponent should prevent its general interactions.
-
-    const isNodeElement = target.closest('.draggable-node');
-    const isNodeHeader = target.closest('.node-header');
-    const isPortElement = target.closest('.port-handle');
-    
-    // Allow interaction if it's on the active drawing sketchpad's specific drawing canvas or its direct controls
-    // This check is more nuanced and primarily handled within NodeComponent for its own canvas.
-    // Here, we mostly care about disabling general canvas interactions.
     if (activeDrawingToolNodeId) {
-        // If target is part of the active drawing node, NodeComponent will handle it.
-        // Prevent all other canvas-level interactions (pan, other node drag/resize, port connection).
+        const isNodeElement = target.closest('.draggable-node');
         if (!isNodeElement || (isNodeElement && isNodeElement.id !== activeDrawingToolNodeId)) {
-             // If the click is on the canvas background OR on a different node, disable.
-             // This effectively prevents panning and interacting with other nodes.
              e.stopPropagation();
              e.preventDefault();
-             setDraggingState(null); // Ensure no dragging state is set
-             setConnectingState(null); // Ensure no connecting state
+             setDraggingState(null);
+             setConnectingState(null);
              return;
         }
-        // If it IS the active drawing node, we still don't want to drag/resize it from here.
-        // Its internal drawing canvas takes precedence.
-        if (isNodeHeader || isPortElement || target.closest('[data-resize-handle="true"]')) {
+        if (target.closest('.node-header') || target.closest('.port-handle') || target.closest('[data-resize-handle="true"]')) {
              e.stopPropagation();
              e.preventDefault();
              setDraggingState(null);
@@ -220,11 +206,11 @@ const CanvasComponent = React.forwardRef<HTMLDivElement, CanvasComponentProps>(
 
 
     const closeButton = target.closest('button[aria-label="Close node"]');
-    if (closeButton && activeDrawingToolNodeId) { // Prevent closing nodes if drawing lock is active
+    if (closeButton && activeDrawingToolNodeId) {
         e.stopPropagation();
         return;
     }
-    if (closeButton) return; // Allow close if no lock
+    if (closeButton) return;
 
     const nodeElement = target.closest('.draggable-node');
     const portElement = target.closest('.port-handle') as HTMLElement | null;
@@ -265,7 +251,11 @@ const CanvasComponent = React.forwardRef<HTMLDivElement, CanvasComponentProps>(
                 });
             }
         }
-    } else if (nodeElement && (target.classList.contains('node-header') || target.closest('.node-header')) && !activeDrawingToolNodeId) {
+    } else if (nodeElement && target.closest('.node-header') && !activeDrawingToolNodeId) {
+      // Check if the click was on a non-draggable part of the header.
+      if (target.closest('.node-header-icon, .node-header-status, button')) {
+          return; // Do not start dragging.
+      }
       e.stopPropagation();
       const nodeId = nodeElement.id;
       const node = nodes.find(n => n.id === nodeId);
@@ -282,7 +272,6 @@ const CanvasComponent = React.forwardRef<HTMLDivElement, CanvasComponentProps>(
         currentCanvas.classList.add('grabbing');
       }
     } else if (e.button === 0 && !target.closest('button, input, textarea, select, .port-handle, [data-resize-handle="true"], .draggable-node') && !activeDrawingToolNodeId) {
-      // Pan only if not clicking on any interactive element and no drawing lock
       setDraggingState({
         type: 'pan',
         initialMouseX: e.clientX,
@@ -292,30 +281,26 @@ const CanvasComponent = React.forwardRef<HTMLDivElement, CanvasComponentProps>(
       });
       currentCanvas.classList.add('grabbing');
     } else if (activeDrawingToolNodeId && e.button === 0 && !target.closest('.draggable-node')) {
-        // If drawing lock is active and click is on background, specifically do nothing here.
-        // Actual drawing is handled inside NodeComponent.
-        e.preventDefault(); // Prevent text selection etc.
+        e.preventDefault();
     }
 
   }, [nodes, viewportToWorld, viewTransform, getPortInfo, setViewTransform, ref, activeDrawingToolNodeId, isWorkflowRunning]);
 
   const handleMouseMove = useCallback((e: React.MouseEvent) => {
-    // If drawing lock is active, general canvas move interactions are disabled.
-    // Specific drawing interaction is handled by the active Sketchpad NodeComponent.
-    if (activeDrawingToolNodeId && draggingState?.type !== 'node') { // Allow node dragging if it was somehow initiated (should be blocked by mousedown)
+    if (activeDrawingToolNodeId && draggingState?.type !== 'node') {
         if (draggingState?.type === 'pan' || draggingState?.type === 'resizing_node') {
-            return; // Explicitly block pan/resize during drawing lock
+            return;
         }
     }
     
     if (!draggingState && !connectingState) return;
     const currentCanvas = (ref as React.RefObject<HTMLDivElement>)?.current;
 
-    if (connectingState && currentCanvas && !activeDrawingToolNodeId) { // Only allow connections if no drawing lock
+    if (connectingState && currentCanvas && !activeDrawingToolNodeId) {
         const canvasRect = currentCanvas.getBoundingClientRect();
         setConnectingState(prev => prev ? { ...prev, currentEndPoint: {x: e.clientX - canvasRect.left, y: e.clientY - canvasRect.top }} : null);
 
-    } else if (draggingState && !activeDrawingToolNodeId) { // Only allow dragging/panning if no drawing lock
+    } else if (draggingState && !activeDrawingToolNodeId) {
         if (draggingState.type === 'node') {
             const worldMouse = viewportToWorld(e.clientX, e.clientY);
             const dx = worldMouse.x - draggingState.initialMouseX;
@@ -345,7 +330,7 @@ const CanvasComponent = React.forwardRef<HTMLDivElement, CanvasComponentProps>(
       onInteractionEnd();
     }
 
-    if (connectingState && !activeDrawingToolNodeId) { // Only complete connections if no drawing lock
+    if (connectingState && !activeDrawingToolNodeId) {
         const targetElement = e.target as HTMLElement;
         const portElement = targetElement.closest('.port-handle') as HTMLElement | null;
         if (portElement) {
@@ -376,12 +361,12 @@ const CanvasComponent = React.forwardRef<HTMLDivElement, CanvasComponentProps>(
             }
         }
     }
-    setConnectingState(null); // Clear connecting state regardless of lock
-    setDraggingState(null); // Clear dragging state regardless of lock
+    setConnectingState(null);
+    setDraggingState(null);
   }, [nodes, connectingState, onAddEdge, onInteractionEnd, ref, activeDrawingToolNodeId, draggingState]);
 
   const handleWheel = useCallback((e: React.WheelEvent) => {
-    if (activeDrawingToolNodeId) { // Disable zoom if drawing lock active
+    if (activeDrawingToolNodeId) {
       e.preventDefault();
       return;
     }
@@ -408,6 +393,99 @@ const CanvasComponent = React.forwardRef<HTMLDivElement, CanvasComponentProps>(
 
     setViewTransform({ x: newViewX, y: newViewY, k: newZoom });
   }, [viewTransform.k, viewTransform.x, viewTransform.y, setViewTransform, ref, activeDrawingToolNodeId]);
+
+    const handleTouchStart = useCallback((e: React.TouchEvent) => {
+        e.preventDefault();
+        if (e.touches.length === 2) {
+            const dx = e.touches[0].clientX - e.touches[1].clientX;
+            const dy = e.touches[0].clientY - e.touches[1].clientY;
+            pinchStartDistance.current = Math.sqrt(dx * dx + dy * dy);
+            // Also treat 2-finger touch as a pan start
+            const midX = (e.touches[0].clientX + e.touches[1].clientX) / 2;
+            const midY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
+             setDraggingState({
+                type: 'pan',
+                initialMouseX: midX,
+                initialMouseY: midY,
+                initialViewX: viewTransform.x,
+                initialViewY: viewTransform.y,
+            });
+            return;
+        }
+
+        if (e.touches.length === 1) {
+            const touch = e.touches[0];
+            const mockMouseEvent = {
+                clientX: touch.clientX,
+                clientY: touch.clientY,
+                target: touch.target,
+                button: 0,
+                stopPropagation: () => e.stopPropagation(),
+                preventDefault: () => e.preventDefault(),
+            } as unknown as React.MouseEvent;
+            handleMouseDown(mockMouseEvent);
+        }
+    }, [handleMouseDown, viewTransform]);
+
+    const handleTouchMove = useCallback((e: React.TouchEvent) => {
+        e.preventDefault();
+        const currentCanvas = (ref as React.RefObject<HTMLDivElement>)?.current;
+        if (!currentCanvas) return;
+
+        if (e.touches.length === 2) {
+            const dx = e.touches[0].clientX - e.touches[1].clientX;
+            const dy = e.touches[0].clientY - e.touches[1].clientY;
+            const currentDistance = Math.sqrt(dx * dx + dy * dy);
+            if (pinchStartDistance.current) {
+                const zoomFactor = currentDistance / pinchStartDistance.current;
+                const newZoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, viewTransform.k * zoomFactor));
+
+                if (newZoom !== viewTransform.k) {
+                    const rect = currentCanvas.getBoundingClientRect();
+                    const midX = (e.touches[0].clientX + e.touches[1].clientX) / 2 - rect.left;
+                    const midY = (e.touches[0].clientY + e.touches[1].clientY) / 2 - rect.top;
+
+                    const worldXUnderMouse = (midX - viewTransform.x) / viewTransform.k;
+                    const worldYUnderMouse = (midY - viewTransform.y) / viewTransform.k;
+
+                    const newViewX = midX - worldXUnderMouse * newZoom;
+                    const newViewY = midY - worldYUnderMouse * newZoom;
+                    
+                    setViewTransform({ x: newViewX, y: newViewY, k: newZoom });
+                    pinchStartDistance.current = currentDistance; // Update for continuous zoom
+                }
+            }
+             // Handle 2-finger panning
+            if (draggingState?.type === 'pan') {
+                const midX = (e.touches[0].clientX + e.touches[1].clientX) / 2;
+                const midY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
+                const d_x = midX - draggingState.initialMouseX;
+                const d_y = midY - draggingState.initialMouseY;
+                setViewTransform(prev => ({ ...prev, x: draggingState.initialViewX + d_x, y: draggingState.initialViewY + d_y }));
+            }
+            return;
+        }
+
+        if (e.touches.length === 1) {
+            const touch = e.touches[0];
+            const mockMouseEvent = {
+                clientX: touch.clientX,
+                clientY: touch.clientY,
+                target: touch.target,
+            } as unknown as React.MouseEvent;
+            handleMouseMove(mockMouseEvent);
+        }
+    }, [handleMouseMove, viewTransform, draggingState]);
+
+    const handleTouchEnd = useCallback((e: React.TouchEvent) => {
+        e.preventDefault();
+        pinchStartDistance.current = null;
+        const touch = e.changedTouches[0];
+        const mockMouseEvent = {
+            target: touch.target,
+        } as unknown as React.MouseEvent;
+        handleMouseUp(mockMouseEvent);
+    }, [handleMouseUp]);
 
 
   const getEdgeColor = (sourceDataType: Port['dataType'], targetDataType: Port['dataType']): string => {
@@ -474,7 +552,11 @@ const CanvasComponent = React.forwardRef<HTMLDivElement, CanvasComponentProps>(
       onMouseUp={handleMouseUp}
       onMouseLeave={() => { handleMouseUp; setHoveredEdgeId(null); }}
       onWheel={handleWheel}
+      onTouchStart={handleTouchStart}
+      onTouchMove={handleTouchMove}
+      onTouchEnd={handleTouchEnd}
       tabIndex={0}
+      style={{ touchAction: 'none' }}
     >
       <GridBackground viewTransform={viewTransform} />
       <div

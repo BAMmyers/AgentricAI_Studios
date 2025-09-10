@@ -48,6 +48,25 @@ const ActivityView: React.FC<ActivityViewProps> = ({ activity, onComplete, onClo
       }
     };
   }, []);
+  
+  const getCoords = (event: React.MouseEvent | React.TouchEvent) => {
+    const canvas = sketchpadCanvasRef.current;
+    if (!canvas) return { offsetX: 0, offsetY: 0 };
+    const rect = canvas.getBoundingClientRect();
+
+    if ('touches' in event) { // Touch event
+      return {
+        offsetX: event.touches[0].clientX - rect.left,
+        offsetY: event.touches[0].clientY - rect.top
+      };
+    } else { // Mouse event
+      return {
+        offsetX: event.clientX - rect.left,
+        offsetY: event.clientY - rect.top
+      };
+    }
+  };
+
 
   // --- Drawing Logic for Art Activity ---
   const getCanvasContext = useCallback(() => {
@@ -56,20 +75,26 @@ const ActivityView: React.FC<ActivityViewProps> = ({ activity, onComplete, onClo
     return canvas.getContext('2d');
   }, []);
 
-  const startDrawing = useCallback((event: React.MouseEvent<HTMLCanvasElement>) => {
+  const startDrawing = useCallback((event: React.MouseEvent | React.TouchEvent) => {
+    event.stopPropagation();
     const context = getCanvasContext();
     if (!context) return;
     setIsDrawing(true);
-    const { offsetX, offsetY } = event.nativeEvent;
+    // FIX: Pass the React synthetic event directly to getCoords instead of the nativeEvent.
+    // The getCoords function is typed to accept a synthetic event.
+    const { offsetX, offsetY } = getCoords(event);
     context.beginPath();
     context.moveTo(offsetX, offsetY);
   }, [getCanvasContext]);
 
-  const draw = useCallback((event: React.MouseEvent<HTMLCanvasElement>) => {
+  const draw = useCallback((event: React.MouseEvent | React.TouchEvent) => {
+    event.stopPropagation();
     if (!isDrawing) return;
     const context = getCanvasContext();
     if (!context) return;
-    const { offsetX, offsetY } = event.nativeEvent;
+    // FIX: Pass the React synthetic event directly to getCoords instead of the nativeEvent.
+    // The getCoords function is typed to accept a synthetic event.
+    const { offsetX, offsetY } = getCoords(event);
     context.lineTo(offsetX, offsetY);
     context.stroke();
   }, [isDrawing, getCanvasContext]);
@@ -219,6 +244,10 @@ const ActivityView: React.FC<ActivityViewProps> = ({ activity, onComplete, onClo
                     onMouseMove={draw}
                     onMouseUp={stopDrawing}
                     onMouseLeave={stopDrawing}
+                    onTouchStart={startDrawing}
+                    onTouchMove={draw}
+                    onTouchEnd={stopDrawing}
+                    onTouchCancel={stopDrawing}
                     className="w-full h-full bg-neutral-950 rounded cursor-crosshair"
                     style={{ touchAction: 'none' }}
                   />
@@ -256,6 +285,10 @@ const ActivityView: React.FC<ActivityViewProps> = ({ activity, onComplete, onClo
                   onMouseMove={draw}
                   onMouseUp={stopDrawing}
                   onMouseLeave={stopDrawing}
+                  onTouchStart={startDrawing}
+                  onTouchMove={draw}
+                  onTouchEnd={stopDrawing}
+                  onTouchCancel={stopDrawing}
                   className="w-full h-full bg-neutral-950 rounded cursor-crosshair"
                   style={{ touchAction: 'none' }}
                 />

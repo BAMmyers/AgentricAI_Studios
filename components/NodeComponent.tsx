@@ -1,4 +1,5 @@
 
+
 import React, { useRef, useEffect, useState, useCallback, useMemo } from 'react';
 import type { NodeData, Port, NodeComponentProps as AppNodeComponentProps } from '../src/core/types';
 import { NodeType } from '../src/core/types';
@@ -87,23 +88,45 @@ function NodeComponent({
       return canvas.getContext('2d');
   }, []);
 
-  const startDrawing = useCallback((event: React.MouseEvent<HTMLCanvasElement>) => {
+  const getCoords = (event: React.MouseEvent | React.TouchEvent) => {
+    const canvas = sketchpadCanvasRef.current;
+    if (!canvas) return { offsetX: 0, offsetY: 0 };
+    const rect = canvas.getBoundingClientRect();
+
+    if ('touches' in event) { // Touch event
+      return {
+        offsetX: event.touches[0].clientX - rect.left,
+        offsetY: event.touches[0].clientY - rect.top
+      };
+    } else { // Mouse event
+      return {
+        offsetX: event.clientX - rect.left,
+        offsetY: event.clientY - rect.top
+      };
+    }
+  };
+
+  const startDrawing = useCallback((event: React.MouseEvent | React.TouchEvent) => {
       event.stopPropagation();
       const context = getCanvasContext();
       if (!context) return;
       setActiveDrawingToolNodeId(node.id);
       setIsDrawing(true);
-      const { offsetX, offsetY } = event.nativeEvent;
+      // FIX: Pass the React synthetic event directly to getCoords instead of the nativeEvent.
+      // The getCoords function is typed to accept a synthetic event.
+      const { offsetX, offsetY } = getCoords(event);
       context.beginPath();
       context.moveTo(offsetX, offsetY);
   }, [getCanvasContext, setActiveDrawingToolNodeId, node.id]);
 
-  const draw = useCallback((event: React.MouseEvent<HTMLCanvasElement>) => {
+  const draw = useCallback((event: React.MouseEvent | React.TouchEvent) => {
       event.stopPropagation();
       if (!isDrawing) return;
       const context = getCanvasContext();
       if (!context) return;
-      const { offsetX, offsetY } = event.nativeEvent;
+      // FIX: Pass the React synthetic event directly to getCoords instead of the nativeEvent.
+      // The getCoords function is typed to accept a synthetic event.
+      const { offsetX, offsetY } = getCoords(event);
       context.lineTo(offsetX, offsetY);
       context.stroke();
   }, [isDrawing, getCanvasContext]);
@@ -124,6 +147,7 @@ function NodeComponent({
       }
   }, [isDrawing, getCanvasContext, setActiveDrawingToolNodeId, node.outputs, updateNodeInternalState, node.id]);
 
+
   const clearCanvas = useCallback(() => {
       const canvas = sketchpadCanvasRef.current;
       const context = getCanvasContext();
@@ -140,10 +164,6 @@ function NodeComponent({
           const canvas = sketchpadCanvasRef.current;
           const context = getCanvasContext();
           if (canvas && context) {
-              // FIX: Use offsetWidth/offsetHeight instead of getBoundingClientRect()
-              // to get the layout dimensions of the canvas, ignoring CSS transforms.
-              // This ensures the canvas buffer size matches the mouse event coordinate space,
-              // fixing drawing scaling issues when the main canvas is zoomed.
               canvas.width = canvas.offsetWidth;
               canvas.height = canvas.offsetHeight;
               context.lineCap = 'round';
@@ -151,7 +171,6 @@ function NodeComponent({
               context.lineWidth = 3;
           }
       }
-      // Rerun this effect when the node's dimensions change.
   }, [node.type, getCanvasContext, node.currentWidth, node.currentHeight]);
 
 
@@ -273,6 +292,10 @@ function NodeComponent({
               onMouseMove={draw}
               onMouseUp={stopDrawing}
               onMouseLeave={stopDrawing}
+              onTouchStart={startDrawing}
+              onTouchMove={draw}
+              onTouchEnd={stopDrawing}
+              onTouchCancel={stopDrawing}
               className={`w-full flex-grow bg-neutral-950 rounded cursor-crosshair ${isDrawingToolActive ? 'ring-2 ring-sky-400' : ''}`}
               style={{ touchAction: 'none' }}
             />
@@ -286,20 +309,22 @@ function NodeComponent({
         );
       }
       default:
-        if (node.isDynamic) {
+        // Render a run button for any dynamic, executable node.
+        // This is especially for nodes with inputs that require manual triggering.
+        if (node.isDynamic && node.executionLogicPrompt) {
             const allRequiredInputsPresent = node.inputs.every(inputPort =>
                 (node.data[inputPort.id] !== undefined && node.data[inputPort.id] !== null && String(node.data[inputPort.id]).trim() !== '')
             );
             const isDynamicNodeDisabled = node.status === 'running' || (node.inputs.length > 0 && !allRequiredInputsPresent);
 
             return (
-                <div className="flex flex-col space-y-1 w-full">
+                <div className="flex flex-col space-y-1 w-full items-center justify-center">
                     <button
                         onClick={() => executeNode(node.id)}
                         disabled={isDynamicNodeDisabled}
-                        className={`${buttonBaseClasses} ${node.color || 'bg-sky-600'} hover:opacity-80 mt-1 w-full`}
+                        className={`${buttonBaseClasses} ${node.color || 'bg-sky-600'} hover:opacity-80 w-full`}
                         title={isDynamicNodeDisabled && !(node.status === 'running') ? "Connect all required inputs" : "Run Node"}>
-                        {node.status === 'running' ? 'Running...' : (node.name.startsWith("The ") ? `Activate ${node.name}`: `Run ${node.name}`)}
+                        Run Node
                     </button>
                     {isSandboxedNode && (
                        <button
@@ -344,9 +369,9 @@ function NodeComponent({
                 <path fillRule="evenodd" d="M10 1a4.5 4.5 0 00-4.5 4.5V9H5a2 2 0 00-2 2v6a2 2 0 002 2h10a2 2 0 002-2v-6a2 2 0 00-2-2h-.5V5.5A4.5 4.5 0 0010 1zm3 8V5.5a3 3 0 10-6 0V9h6z" clipRule="evenodd" />
             </svg>
         )}
-        <span className="text-md mr-1.5 text-gray-200" style={{minWidth: '20px', textAlign: 'center'}}>{node.icon || '⚙️'}</span>
+        <span className="node-header-icon text-md mr-1.5 text-gray-200" style={{minWidth: '20px', textAlign: 'center'}}>{node.icon || '⚙️'}</span>
         <span className="font-semibold text-sm truncate text-gray-200 flex-grow mr-1">{node.name}</span>
-        <NodeStatusIndicator status={node.status} />
+        <div className="node-header-status"><NodeStatusIndicator status={node.status} /></div>
         <button
           onClick={(e) => { e.stopPropagation(); onCloseNode(node.id); }}
           className={`ml-1.5 p-0.5 text-gray-400 focus:outline-none rounded-full ${node.isImmutable ? 'opacity-30 cursor-not-allowed' : 'hover:text-red-500 hover:bg-neutral-700'}`}

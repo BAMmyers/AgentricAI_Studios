@@ -1,12 +1,9 @@
-
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import type { EchoTask, TaskStatus } from '../../src/core/types';
 import { initialEchoTasks } from '../../src/core/echoData';
 import Timeline from './Timeline';
 import ActivityView from './ActivityView';
 import { llmService } from '../../src/services/llmService';
-import { initialSystemAgents } from '../../src/core/agentDefinitions';
-
 
 const EchoApp: React.FC = () => {
   const [tasks, setTasks] = useState<EchoTask[]>(initialEchoTasks);
@@ -56,7 +53,7 @@ const EchoApp: React.FC = () => {
     };
   }, [currentActivity]);
 
-  const handleStartTask = (taskId: string) => {
+  const handleStartTask = useCallback((taskId: string) => {
     const taskToStart = tasks.find(t => t.id === taskId);
     // Only allow starting the 'current' task
     if (taskToStart && taskToStart.status === 'current') {
@@ -64,9 +61,9 @@ const EchoApp: React.FC = () => {
       setInteractionLog(prev => [...prev, `Started task: ${taskToStart.name}`]);
       console.log(`Task started: ${taskToStart.name} (ID: ${taskToStart.id}) at ${new Date().toISOString()}`);
     }
-  };
+  }, [tasks]);
 
-  const handleCompleteTask = async () => {
+  const handleCompleteTask = useCallback(async () => {
     if (!currentActivity) return;
 
     setIsFeedbackLoading(true);
@@ -91,9 +88,9 @@ const EchoApp: React.FC = () => {
         setFeedback(text);
     }
     setIsFeedbackLoading(false);
-  };
+  }, [currentActivity, interactionLog]);
 
-  const handleCloseActivityView = () => {
+  const handleCloseActivityView = useCallback(() => {
     // Reset feedback and close the modal
     setFeedback(null);
     setCurrentActivity(null);
@@ -108,7 +105,7 @@ const EchoApp: React.FC = () => {
         }
         return newTasks;
     });
-  };
+  }, []);
 
   const formatTime = (seconds: number | null): string => {
     if (seconds === null) return '00:00';
@@ -116,13 +113,56 @@ const EchoApp: React.FC = () => {
     const secs = seconds % 60;
     return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
   };
+  
+  const handleUndo = useCallback(() => {
+    if (currentActivity) return; // Only works from timeline view
+
+    setTasks(currentTasks => {
+        const currentIndex = currentTasks.findIndex(t => t.status === 'current');
+        let lastCompletedIndex = -1;
+        for (let i = currentTasks.length - 1; i >= 0; i--) {
+            if (currentTasks[i].status === 'completed') {
+                lastCompletedIndex = i;
+                break;
+            }
+        }
+        
+        if (lastCompletedIndex !== -1) {
+            const newTasks = [...currentTasks];
+            newTasks[lastCompletedIndex] = { ...newTasks[lastCompletedIndex], status: 'current' };
+            if (currentIndex !== -1) {
+                newTasks[currentIndex] = { ...newTasks[currentIndex], status: 'upcoming' };
+            }
+            return newTasks;
+        }
+        return currentTasks;
+    });
+  }, [currentActivity]);
+
+  const handleContinue = useCallback(() => {
+    if (currentActivity) {
+        handleCompleteTask();
+    } else {
+        const currentTask = tasks.find(t => t.status === 'current');
+        if (currentTask) {
+            handleStartTask(currentTask.id);
+        }
+    }
+  }, [currentActivity, tasks, handleCompleteTask, handleStartTask]);
+  
+  const canUndo = !currentActivity && tasks.some(t => t.status === 'completed');
+  const canContinue = !!currentActivity || tasks.some(t => t.status === 'current');
 
   return (
     <div className="flex-grow flex flex-col bg-black text-gray-200 overflow-hidden">
       <div className="p-4 border-b border-neutral-800 flex items-center justify-between">
         <div className="w-1/3"></div> {/* Left spacer */}
         <div className="w-1/3 text-center">
-          <h2 className="text-2xl font-bold text-green-400">Echo Project Daily Schedule</h2>
+          <h2 className="text-2xl font-bold text-green-400 flex items-baseline justify-center">
+            <button onClick={handleUndo} className="font-bold hover:text-white disabled:opacity-50 transition-colors" title="Undo Last Task" disabled={!canUndo}>E</button>
+            <span>cho Project Daily Schedul</span>
+            <button onClick={handleContinue} className="font-bold hover:text-white disabled:opacity-50 transition-colors" title="Continue" disabled={!canContinue}>e</button>
+          </h2>
           <p className="text-sm text-gray-400">A dynamic, adaptive companion for learning and growth.</p>
         </div>
         <div className="w-1/3 flex justify-end items-center pr-4">
