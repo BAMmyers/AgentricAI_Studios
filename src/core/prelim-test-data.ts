@@ -1,3 +1,4 @@
+
 import { NodeData, Edge, NodeType } from './types';
 
 // --- Placeholder Data for the "Creative Storyboarding" Workflow ---
@@ -171,14 +172,10 @@ export const prelimNodes: NodeData[] = [
     x: 1000,
     y: 220,
     inputs: [
-      // FIX: Added missing 'type' property to conform to the Port interface.
       { id: 'prompt_part_1', name: 'Character', type: 'input', dataType: 'any' },
-      // FIX: Added missing 'type' property to conform to the Port interface.
       { id: 'prompt_part_2', name: 'Scene', type: 'input', dataType: 'any' },
-      // FIX: Added missing 'type' property to conform to the Port interface.
       { id: 'prompt_part_3', name: 'Style', type: 'input', dataType: 'any' },
     ],
-    // FIX: Added missing 'type' property to conform to the Port interface.
     outputs: [{ id: 'assembled_prompt_out', name: 'Assembled Prompt', type: 'output', dataType: 'text' }],
     data: { 
         'prompt_part_1': characterDescription,

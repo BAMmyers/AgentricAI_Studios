@@ -1,3 +1,4 @@
+
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import type { EchoTask } from '../../src/core/types';
 import { llmService } from '../../src/services/llmService';
@@ -80,8 +81,6 @@ const ActivityView: React.FC<ActivityViewProps> = ({ activity, onComplete, onClo
     const context = getCanvasContext();
     if (!context) return;
     setIsDrawing(true);
-    // FIX: Pass the React synthetic event directly to getCoords instead of the nativeEvent.
-    // The getCoords function is typed to accept a synthetic event.
     const { offsetX, offsetY } = getCoords(event);
     context.beginPath();
     context.moveTo(offsetX, offsetY);
@@ -92,8 +91,6 @@ const ActivityView: React.FC<ActivityViewProps> = ({ activity, onComplete, onClo
     if (!isDrawing) return;
     const context = getCanvasContext();
     if (!context) return;
-    // FIX: Pass the React synthetic event directly to getCoords instead of the nativeEvent.
-    // The getCoords function is typed to accept a synthetic event.
     const { offsetX, offsetY } = getCoords(event);
     context.lineTo(offsetX, offsetY);
     context.stroke();

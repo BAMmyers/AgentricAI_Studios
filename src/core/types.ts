@@ -1,5 +1,4 @@
 
-
 import type { ReactNode } from "react";
 import { GroundingMetadata } from "@google/genai";
 
@@ -196,7 +195,6 @@ export interface SavedWorkflow {
     lastSaved: string;
 }
 
-// FIX: Add missing EventLog interface.
 export interface EventLog {
   id: number;
   agent: string;
@@ -204,7 +202,6 @@ export interface EventLog {
   timestamp: string;
   details: Record<string, any>;
 }
-
 
 // --- Echo Project Types ---
 export type TaskStatus = 'upcoming' | 'current' | 'completed';

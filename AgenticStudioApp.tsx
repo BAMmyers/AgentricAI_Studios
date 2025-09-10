@@ -1,6 +1,5 @@
 
 
-
 import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import { initialSystemAgents } from './src/core/agentDefinitions';
 import type { NodeData, Edge, DynamicNodeConfig, Point, Environment, LlmServiceConfig, ExecutionHistoryEntry, SavedWorkflow, ExecutionRuntime, AiMode, ContextMemory } from './src/core/types';
@@ -16,6 +15,7 @@ import { execute as executeDynamicNode } from './src/nodes/dynamicNode';
 import { prelimNodes, prelimEdges } from './src/core/prelim-test-data';
 import Sidebar from './components/Sidebar';
 import DefineNodeModal from './components/DefineNodeModal';
+import { securityService } from './src/services/securityService';
 
 const createPortsFromDefinitions = (portDefs: DynamicNodeConfig['inputs'] | DynamicNodeConfig['outputs'], type: 'input' | 'output') => {
   return portDefs.map((def, index) => ({
@@ -35,12 +35,11 @@ const AgenticStudioApp: React.FC = () => {
   const [availableAgents, setAvailableAgents] = useState<DynamicNodeConfig[]>([]);
   
   // --- Core States ---
-  const [llmConfig, setLlmConfig] = useState<LlmServiceConfig>(llmService.getConfiguration());
   const [showDefineNodeModal, setShowDefineNodeModal] = useState(false);
 
   // --- Algorithmic Mode States ---
   const [environment, setEnvironment] = useState<Environment>('studio');
-  const [executionRuntime, setExecutionRuntime] = useState<ExecutionRuntime>('net');
+  const [executionRuntime, setExecutionRuntime] = useState<ExecutionRuntime>('native');
   const [aiMode, setAiMode] = useState<AiMode>('agent');
   const [contextMemory, setContextMemory] = useState<ContextMemory>('full');
 
@@ -59,7 +58,8 @@ const AgenticStudioApp: React.FC = () => {
   const [executionHistory, setExecutionHistory] = useState<ExecutionHistoryEntry[]>([]);
   const [savedWorkflows, setSavedWorkflows] = useState<Record<string, SavedWorkflow>>({});
   const [currentWorkflowName, setCurrentWorkflowName] = useState('Untitled Workflow');
-
+  const [llmConfig, setLlmConfig] = useState<LlmServiceConfig>(llmService.getConfiguration());
+  
   const isInitialMount = useRef(true);
 
   const canUndo = historyIndex > 0;
@@ -99,7 +99,8 @@ const AgenticStudioApp: React.FC = () => {
   // --- Initialization ---
   useEffect(() => {
     const initializeApp = async () => {
-        mechanicService.init();
+        // FIX: The `init` method of `mechanicService` expects 0 arguments.
+        await mechanicService.init();
         await databaseService.init();
         
         const storedWorkflows = await databaseService.loadWorkflows();
@@ -156,10 +157,10 @@ const AgenticStudioApp: React.FC = () => {
     }
 
     const handler = setTimeout(() => {
-        // Always save the current state, even if empty, to correctly persist a cleared canvas.
+        // This now saves the workflow regardless of content, correctly persisting an empty canvas state.
         console.log("Autosaving session to database...");
         databaseService.saveWorkflow('__autosave', nodes, edges);
-    }, 1000); // 1-second debounce
+    }, 1000);
 
     return () => {
         clearTimeout(handler);
@@ -413,22 +414,51 @@ const AgenticStudioApp: React.FC = () => {
     setHighlightedNodeId(null);
   };
   
-  // FIX: Add handler for defining new nodes from the modal.
   const handleDefineNode = useCallback(async (userDescription: string): Promise<{ success: boolean; error?: string }> => {
     const newAgentConfig = await llmService.defineNodeFromPrompt(userDescription, environment === 'sandbox');
-    if (newAgentConfig) {
-      setAvailableAgents(prev => [...prev, { ...newAgentConfig, isDynamic: true, category: 'Custom Agents' }]);
-      return { success: true };
+    if (!newAgentConfig) {
+      return { success: false, error: "The AI failed to define a valid node from your description. Please try rephrasing your request." };
     }
-    return { success: false, error: "The AI failed to define a valid node from your description. Please try rephrasing your request." };
+    
+    // Security Review via The Gatekeeper
+    const review = await securityService.reviewAgent(newAgentConfig);
+    if (!review.approved) {
+        return { success: false, error: `Agent review denied by The Gatekeeper: ${review.reason}` };
+    }
+
+    setAvailableAgents(prev => [...prev, { ...newAgentConfig, isDynamic: true, category: 'Custom Agents', isPromoted: true }]);
+    return { success: true };
   }, [environment]);
 
-  // FIX: Add handler for the 'Request Review' action on sandboxed nodes.
-  const handleRequestReview = useCallback((nodeId: string) => {
-    console.log(`Review requested for node ${nodeId}. This feature is a placeholder.`);
-    // In a real implementation, this would trigger a review process.
-    updateNodeInternalState(nodeId, {}, 'success', "Review simulation complete: Approved!", '0s');
-  }, [updateNodeInternalState]);
+  const handleRequestReview = useCallback(async (nodeId: string) => {
+    const nodeToReview = nodes.find(n => n.id === nodeId);
+    if (!nodeToReview) return;
+    
+    updateNodeInternalState(nodeId, {}, 'running', "Submitting for review...");
+
+    // Create a config object from the node data for the Gatekeeper
+    const configToReview: DynamicNodeConfig = {
+        name: nodeToReview.name,
+        description: nodeToReview.description || "A user-defined agent from the sandbox.",
+        inputs: nodeToReview.inputs.map(p => ({ id: p.id, name: p.name, dataType: p.dataType })),
+        outputs: nodeToReview.outputs.map(p => ({ id: p.id, name: p.name, dataType: p.dataType })),
+        executionLogicPrompt: nodeToReview.executionLogicPrompt,
+        color: nodeToReview.color || 'bg-gray-500',
+        icon: nodeToReview.icon || '💡',
+        isDynamic: true,
+        category: 'Custom Agents'
+    };
+    
+    const review = await securityService.reviewAgent(configToReview);
+    
+    if(review.approved) {
+        updateNodeInternalState(nodeId, {}, 'success', "Approved!");
+        setAvailableAgents(prev => [...prev, { ...configToReview, isPromoted: true }]);
+        alert(`Agent "${configToReview.name}" has been approved and added to your Node Library!`);
+    } else {
+        updateNodeInternalState(nodeId, {}, 'error', `Denied: ${review.reason}`);
+    }
+  }, [nodes, updateNodeInternalState]);
 
   const handleSaveWorkflow = async () => {
     const name = currentWorkflowName.trim();
@@ -454,9 +484,11 @@ const AgenticStudioApp: React.FC = () => {
   };
 
   const handleDeleteWorkflow = async (name: string) => {
-    await databaseService.deleteWorkflow(name);
-    const newSavedWorkflows = await databaseService.loadWorkflows();
-    setSavedWorkflows(newSavedWorkflows);
+    if (window.confirm(`Are you sure you want to delete workflow "${name}"? This cannot be undone.`)) {
+        await databaseService.deleteWorkflow(name);
+        const newSavedWorkflows = await databaseService.loadWorkflows();
+        setSavedWorkflows(newSavedWorkflows);
+    }
   };
 
   const handleSaveLlmSettings = (newConfig: LlmServiceConfig) => {
@@ -505,7 +537,7 @@ const AgenticStudioApp: React.FC = () => {
                 <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clipRule="evenodd" /></svg>
                 <span className="hidden md:inline">{isWorkflowRunning ? 'Running...' : 'Run Full Workflow'}</span>
             </button>
-            <button onClick={() => { setNodes([]); setEdges([]); pushToHistory([], []); setExecutionHistory([]); }} className="bg-red-600 hover:bg-red-700 text-white px-3 py-1.5 rounded-md text-sm font-medium flex items-center space-x-1.5">
+            <button onClick={() => { setNodes([]); setEdges([]); pushToHistory([], []); setExecutionHistory([]); databaseService.saveWorkflow('__autosave', [], []); }} className="bg-red-600 hover:bg-red-700 text-white px-3 py-1.5 rounded-md text-sm font-medium flex items-center space-x-1.5">
                 <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm4 0a1 1 0 012 0v6a1 1 0 11-2 0V8z" clipRule="evenodd" /></svg>
                 <span className="hidden md:inline">Clear Canvas</span>
             </button>
@@ -526,7 +558,6 @@ const AgenticStudioApp: React.FC = () => {
           llmConfig={llmConfig}
           onLlmSettingsSave={handleSaveLlmSettings}
           hasApiKey={!!GEMINI_API_KEY}
-          // Pass mode states and setters
           environment={environment}
           setEnvironment={setEnvironment}
           executionRuntime={executionRuntime}
@@ -544,7 +575,6 @@ const AgenticStudioApp: React.FC = () => {
               onRemoveEdge={handleRemoveEdge} onViewTransformChange={setAppViewTransform} 
               highlightedNodeId={highlightedNodeId} activeDrawingToolNodeId={activeDrawingToolNodeId} 
               setActiveDrawingToolNodeId={setActiveDrawingToolNodeId} isWorkflowRunning={isWorkflowRunning}
-              // FIX: Pass missing required props to satisfy the CanvasComponentProps type.
               onInteractionEnd={handleInteractionEnd}
               onAddNode={onAddNode}
               appMode={environment}
@@ -565,5 +595,4 @@ const AgenticStudioApp: React.FC = () => {
   );
 };
 
-// FIX: Add default export to the component.
 export default AgenticStudioApp;

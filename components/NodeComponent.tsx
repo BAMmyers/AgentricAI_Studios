@@ -1,5 +1,4 @@
 
-
 import React, { useRef, useEffect, useState, useCallback, useMemo } from 'react';
 import type { NodeData, Port, NodeComponentProps as AppNodeComponentProps } from '../src/core/types';
 import { NodeType } from '../src/core/types';
@@ -119,8 +118,6 @@ function NodeComponent({
       if (!context) return;
       setActiveDrawingToolNodeId(node.id);
       setIsDrawing(true);
-      // FIX: Pass the React synthetic event directly to getCoords instead of the nativeEvent.
-      // The getCoords function is typed to accept a synthetic event.
       const { offsetX, offsetY } = getCoords(event);
       context.beginPath();
       context.moveTo(offsetX, offsetY);
@@ -131,8 +128,6 @@ function NodeComponent({
       if (!isDrawing) return;
       const context = getCanvasContext();
       if (!context) return;
-      // FIX: Pass the React synthetic event directly to getCoords instead of the nativeEvent.
-      // The getCoords function is typed to accept a synthetic event.
       const { offsetX, offsetY } = getCoords(event);
       context.lineTo(offsetX, offsetY);
       context.stroke();
@@ -316,8 +311,6 @@ function NodeComponent({
         );
       }
       default:
-        // Render a run button for any dynamic, executable node.
-        // This is especially for nodes with inputs that require manual triggering.
         if (node.isDynamic && node.executionLogicPrompt) {
             const allRequiredInputsPresent = node.inputs.every(inputPort =>
                 (node.data[inputPort.id] !== undefined && node.data[inputPort.id] !== null && String(node.data[inputPort.id]).trim() !== '')

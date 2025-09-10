@@ -1,4 +1,5 @@
 
+
 import initSqlJs from 'sql.js';
 import type { Database } from 'sql.js';
 import type { DynamicNodeConfig, NodeData, Edge, SavedWorkflow, EventLog, BugReport } from '../core/types';
