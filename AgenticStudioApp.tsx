@@ -2,24 +2,19 @@
 
 import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import { initialSystemAgents } from './src/core/agentDefinitions';
-import type { NodeData, Edge, DynamicNodeConfig, Point, AppMode, LlmServiceConfig, ExecutionHistoryEntry, SavedWorkflow } from './src/core/types';
+import type { NodeData, Edge, DynamicNodeConfig, Point, Environment, LlmServiceConfig, ExecutionHistoryEntry, SavedWorkflow, ExecutionRuntime, AiMode, ContextMemory } from './src/core/types';
 import { NODE_CONFIG, DEFAULT_NODE_WIDTH } from './src/core/constants';
 import CanvasComponent from './components/CanvasComponent';
 import EchoApp from './components/echo/EchoApp';
 import MechanicStatus from './components/MechanicStatus';
 import { llmService } from './src/services/llmService';
+import { databaseService } from './src/services/databaseService';
 import { mechanicService } from './src/services/mechanicService';
 import { staticNodeLogics } from './src/nodes/nodeLogicRegistry';
 import { execute as executeDynamicNode } from './src/nodes/dynamicNode';
 import { prelimNodes, prelimEdges } from './src/core/prelim-test-data';
 import Sidebar from './components/Sidebar';
 import DefineNodeModal from './components/DefineNodeModal';
-
-// --- Constants for localStorage keys ---
-const AUTOSAVE_NODES_KEY = 'agenticStudio_autosave_nodes_v2';
-const AUTOSAVE_EDGES_KEY = 'agenticStudio_autosave_edges_v2';
-const AUTOSAVE_AGENTS_KEY = 'agenticStudio_autosave_custom_agents_v2';
-const SAVED_WORKFLOWS_KEY = 'agenticStudio_workflows_v3';
 
 const createPortsFromDefinitions = (portDefs: DynamicNodeConfig['inputs'] | DynamicNodeConfig['outputs'], type: 'input' | 'output') => {
   return portDefs.map((def, index) => ({
@@ -37,13 +32,16 @@ const AgenticStudioApp: React.FC = () => {
   const [nodes, setNodes] = useState<NodeData[]>([]);
   const [edges, setEdges] = useState<Edge[]>([]);
   const [availableAgents, setAvailableAgents] = useState<DynamicNodeConfig[]>([]);
-  const [appMode, setAppMode] = useState<AppMode>('studio');
   
   // --- Core States ---
   const [llmConfig, setLlmConfig] = useState<LlmServiceConfig>(llmService.getConfiguration());
-  const [showSettingsModal, setShowSettingsModal] = useState(false);
-  const [tempLlmConfig, setTempLlmConfig] = useState<LlmServiceConfig>(llmService.getConfiguration());
   const [showDefineNodeModal, setShowDefineNodeModal] = useState(false);
+
+  // --- Algorithmic Mode States ---
+  const [environment, setEnvironment] = useState<Environment>('studio');
+  const [executionRuntime, setExecutionRuntime] = useState<ExecutionRuntime>('net');
+  const [aiMode, setAiMode] = useState<AiMode>('agent');
+  const [contextMemory, setContextMemory] = useState<ContextMemory>('full');
 
   // --- Canvas Interaction States ---
   const [appViewTransform, setAppViewTransform] = useState<{ x: number, y: number, k: number }>({ x: 0, y: 0, k: 1 });
@@ -60,6 +58,8 @@ const AgenticStudioApp: React.FC = () => {
   const [executionHistory, setExecutionHistory] = useState<ExecutionHistoryEntry[]>([]);
   const [savedWorkflows, setSavedWorkflows] = useState<Record<string, SavedWorkflow>>({});
   const [currentWorkflowName, setCurrentWorkflowName] = useState('Untitled Workflow');
+
+  const isInitialMount = useRef(true);
 
   const canUndo = historyIndex > 0;
   const canRedo = historyIndex < history.length - 1;
@@ -97,56 +97,80 @@ const AgenticStudioApp: React.FC = () => {
 
   // --- Initialization ---
   useEffect(() => {
-    mechanicService.init();
+    const initializeApp = async () => {
+        mechanicService.init();
+        await databaseService.init();
+        
+        const storedWorkflows = await databaseService.loadWorkflows();
+        if(storedWorkflows) { setSavedWorkflows(storedWorkflows); }
 
-    const savedNodes = localStorage.getItem(AUTOSAVE_NODES_KEY);
-    const savedEdges = localStorage.getItem(AUTOSAVE_EDGES_KEY);
-    const savedAgents = localStorage.getItem(AUTOSAVE_AGENTS_KEY);
-    const storedWorkflows = localStorage.getItem(SAVED_WORKFLOWS_KEY);
-    if(storedWorkflows) { setSavedWorkflows(JSON.parse(storedWorkflows)); }
+        let initialNodes: NodeData[], initialEdges: Edge[];
+        const autosavedWorkflow = await databaseService.loadWorkflow('__autosave');
 
+        if (autosavedWorkflow && autosavedWorkflow.nodes.length > 0) {
+          initialNodes = autosavedWorkflow.nodes;
+          initialEdges = autosavedWorkflow.edges;
+          console.log("AgentricAI Studios: Autosaved workflow from previous session loaded from database.");
+        } else {
+          initialNodes = prelimNodes;
+          initialEdges = prelimEdges;
+          console.log("AgentricAI Studios: No autosaved workflow found, loading preliminary test data.");
+        }
+        setNodes(initialNodes);
+        setEdges(initialEdges);
+        
+        const initialHistory = [{ nodes: initialNodes, edges: initialEdges }];
+        setHistory(initialHistory);
+        setHistoryIndex(0);
+        
+        const allSystemAgents = initialSystemAgents;
+        const staticAgents = Object.entries(NODE_CONFIG).map(([key, config]) => ({
+          name: key,
+          description: config.description || "A standard node.",
+          inputs: config.inputs,
+          outputs: config.outputs,
+          color: config.color,
+          icon: config.icon,
+          isDynamic: false,
+          category: config.category,
+          requiresWebSearch: config.requiresWebSearch || false,
+          defaultHeight: config.defaultHeight,
+        }));
+        
+        const customAgents = await databaseService.loadCustomAgents();
+        setAvailableAgents([...staticAgents, ...allSystemAgents, ...customAgents]);
+    };
 
-    let initialNodes: NodeData[], initialEdges: Edge[];
-    if (savedNodes && savedEdges && JSON.parse(savedNodes).length > 0) {
-      initialNodes = JSON.parse(savedNodes);
-      initialEdges = JSON.parse(savedEdges);
-      console.log("AgentricAI Studios: Autosaved workflow from previous session loaded.");
-    } else {
-      initialNodes = prelimNodes;
-      initialEdges = prelimEdges;
-      console.log("AgentricAI Studios: No autosaved workflow found, loading preliminary test data.");
-    }
-    setNodes(initialNodes);
-    setEdges(initialEdges);
-    
-    const initialHistory = [{ nodes: initialNodes, edges: initialEdges }];
-    setHistory(initialHistory);
-    setHistoryIndex(0);
-    
-    const allSystemAgents = initialSystemAgents;
-    const staticAgents = Object.entries(NODE_CONFIG).map(([key, config]) => ({
-      name: key,
-      description: config.description || "A standard node.",
-      inputs: config.inputs,
-      outputs: config.outputs,
-      color: config.color,
-      icon: config.icon,
-      isDynamic: false,
-      category: config.category,
-      requiresWebSearch: config.requiresWebSearch || false,
-      defaultHeight: config.defaultHeight,
-    }));
-    
-    const customAgents = savedAgents ? JSON.parse(savedAgents) : [];
-    setAvailableAgents([...staticAgents, ...allSystemAgents, ...customAgents]);
+    initializeApp().catch(error => {
+      console.error("A critical error occurred during application initialization:", error);
+      mechanicService.logBug(error as Error, "Critical Application Initialization Failure");
+    });
   }, []);
 
-  // --- Autosaving Effects ---
-  useEffect(() => { localStorage.setItem(AUTOSAVE_NODES_KEY, JSON.stringify(nodes)); }, [nodes]);
-  useEffect(() => { localStorage.setItem(AUTOSAVE_EDGES_KEY, JSON.stringify(edges)); }, [edges]);
+  // --- Autosaving Workflow to DB (debounced) ---
   useEffect(() => {
+    if (isInitialMount.current) {
+        isInitialMount.current = false;
+        return;
+    }
+
+    const handler = setTimeout(() => {
+        if (nodes.length > 0 || edges.length > 0) {
+            console.log("Autosaving session to database...");
+            databaseService.saveWorkflow('__autosave', nodes, edges);
+        }
+    }, 1000); // 1-second debounce
+
+    return () => {
+        clearTimeout(handler);
+    };
+  }, [nodes, edges]);
+
+  // --- Autosaving Custom Agents to DB ---
+  useEffect(() => {
+    if (isInitialMount.current) return; // Don't save on initial load
     const customAgents = availableAgents.filter(a => a.category === 'Custom Agents');
-    localStorage.setItem(AUTOSAVE_AGENTS_KEY, JSON.stringify(customAgents));
+    databaseService.saveCustomAgents(customAgents);
   }, [availableAgents]);
   
   useEffect(() => {
@@ -287,7 +311,7 @@ const AgenticStudioApp: React.FC = () => {
             throw new Error(`Execution logic not found for node type: ${node.type}`);
         }
         
-        const result = await executionFn(node, llmService, appMode);
+        const result = await executionFn(node, llmService, environment);
         execTime = ((performance.now() - startTime) / 1000).toFixed(2) + 's';
 
         if (result.error) {
@@ -331,7 +355,7 @@ const AgenticStudioApp: React.FC = () => {
         }, ...prev]);
     }
     return finalStatus;
-  }, [nodes, edges, updateNodeInternalState, isWorkflowRunning, highlightedNodeId, activeDrawingToolNodeId, appMode]);
+  }, [nodes, edges, updateNodeInternalState, isWorkflowRunning, highlightedNodeId, activeDrawingToolNodeId, environment]);
 
   const runFullWorkflow = async () => {
     if (isWorkflowRunning || activeDrawingToolNodeId) return;
@@ -389,60 +413,46 @@ const AgenticStudioApp: React.FC = () => {
     setHighlightedNodeId(null);
   };
   
-  const handleSaveWorkflow = () => {
+  const handleSaveWorkflow = async () => {
     const name = currentWorkflowName.trim();
-    if (!name) {
-        alert("Please enter a name for the workflow.");
+    if (!name || name === '__autosave') {
+        alert("Please enter a valid name for the workflow.");
         return;
     }
-    const newSavedWorkflows = {
-        ...savedWorkflows,
-        [name]: {
-            name: name,
-            nodes: nodes,
-            edges: edges,
-            lastSaved: new Date().toISOString()
-        }
-    };
+    await databaseService.saveWorkflow(name, nodes, edges);
+    const newSavedWorkflows = await databaseService.loadWorkflows();
     setSavedWorkflows(newSavedWorkflows);
-    localStorage.setItem(SAVED_WORKFLOWS_KEY, JSON.stringify(newSavedWorkflows));
+    alert(`Workflow "${name}" saved!`);
   };
   
-  const handleLoadWorkflow = (name: string) => {
-    const workflow = savedWorkflows[name];
+  const handleLoadWorkflow = async (name: string) => {
+    const workflow = await databaseService.loadWorkflow(name);
     if (workflow) {
         setNodes(workflow.nodes);
         setEdges(workflow.edges);
         setCurrentWorkflowName(name);
         pushToHistory(workflow.nodes, workflow.edges, 'Load Workflow');
-        setExecutionHistory([]); // Clear history for the new workflow
+        setExecutionHistory([]);
     }
   };
 
-  const handleDeleteWorkflow = (name: string) => {
-    const newSavedWorkflows = { ...savedWorkflows };
-    delete newSavedWorkflows[name];
+  const handleDeleteWorkflow = async (name: string) => {
+    await databaseService.deleteWorkflow(name);
+    const newSavedWorkflows = await databaseService.loadWorkflows();
     setSavedWorkflows(newSavedWorkflows);
-    localStorage.setItem(SAVED_WORKFLOWS_KEY, JSON.stringify(newSavedWorkflows));
   };
 
-
-  const llmStatusMessage = useMemo(() => {
-    if (llmConfig.activeRuntime === 'gemini') return GEMINI_API_KEY ? "Gemini Active" : "Gemini (No API Key)";
-    return `${llmConfig.activeRuntime === 'local_lm_studio' ? 'LM Studio' : 'Ollama'} Active`;
-  }, [llmConfig.activeRuntime]);
-
-  const handleSaveLlmSettings = () => {
-    llmService.setConfiguration(tempLlmConfig);
+  const handleSaveLlmSettings = (newConfig: LlmServiceConfig) => {
+    llmService.setConfiguration(newConfig);
     setLlmConfig(llmService.getConfiguration());
-    setShowSettingsModal(false);
+    alert("LLM settings saved!");
   };
 
-  if (appMode === 'echo') {
+  if (environment === 'echo') {
     return (
         <div className="flex flex-col h-screen bg-black">
              <header className="bg-neutral-950 p-2 shadow-md flex items-center justify-end border-b-4 border-dotted border-neutral-800">
-                <button onClick={() => setAppMode('studio')} className="bg-sky-600 hover:bg-sky-700 text-white px-3 py-1.5 rounded-md text-sm font-medium">
+                <button onClick={() => setEnvironment('studio')} className="bg-sky-600 hover:bg-sky-700 text-white px-3 py-1.5 rounded-md text-sm font-medium">
                     Return to Studio
                 </button>
              </header>
@@ -452,7 +462,7 @@ const AgenticStudioApp: React.FC = () => {
   }
 
   return (
-    <div className={`flex flex-col h-screen bg-gray-900 text-gray-300 ${appMode === 'sandbox' ? 'sandbox-mode' : ''}`}>
+    <div className={`flex flex-col h-screen bg-gray-900 text-gray-300 ${environment === 'sandbox' ? 'sandbox-mode' : ''}`}>
       <header className="bg-neutral-950 p-2 shadow-md flex items-center justify-between border-b-4 border-dotted border-neutral-800 space-x-2 z-20">
         <div className="flex items-center space-x-2">
             <img src="data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAiIGhlaWdodD0iNDAiIHZpZXdCb3g9IjAgMCAxMjAgMTIwIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPgogIDxkZWZzPgogICAgPGxpbmVhckdyYWRpZW50IGlkPSJnbG93R3JhZGllbnQiIHgxPSIwJSIgeTE9IjAlIiB4Mj0iMTAwJSIgeTI9IjEwMCUiPgogICAgICA8c3RvcCBvZmZzZXQ9IjAlIiBzdHlsZT0ic3RvcC1jb2xvcjojMDBCN0QwOyBzdG9wLW9wYWNpdHk6MSIgLz4KICAgICAgPHN0b3Agb2Zmc2V0PSIxMDAlIiBzdHlsZT0ic3RvcC1jb2xvcjojOGE0QkFFOyBzdG9wLW9wYWNpdHk6MSIgLz4KICAgIDwvbGluZWFyR3JhZGllbnQ+CiAgPC9kZWZzPgogIDxnIHRyYW5zZm9ybT0idHJhbnNsYXRlKDYwIDYwKSBzY2FsZSgwLjgpIHRyYW5zbGF0ZSgtNjAgLTYwKSI+CiAgICAgIDxnPgogICAgICAgICAgPHBhdGggZD0iTTYwIDEwQTE1IDE1IDkwIDAgMSA2MCAyNUExNSAxNSAyNzAgMCAxIDYwIDEwWiIgZmlsbD0idXJsKCNnbG93R3JhZGllbnQpIiB0cmFuc2Zvcm09InJvdGF0ZSgzMCA2MCA2MCkiPgogICAgICAgICAgICA8YW5pbWF0ZVRyYW5zZm9ybSBhdHRyaWJ1dGVOYW1lPSJ0cmFuc2Zvcm0iIHR5cGU9InJvdGF0ZSIgZnJvbT0iMzAgNjAgNjAiIHRvPSIzOTIgNjAgNjAiIGR1cj0iMTVzIiByZXBlYXRDb3VudD0iaW5kZWZpbml0ZSIgLz4KICAgICAgICAgIDwvcGF0aD4KICAgICAgICAgIDxwYXRoIGQ9Ik02MCAxMEExNSA1NSA5MCAwIDEgNjAgMjVBMTUgMTUgMjcwIDAgMSA2MCAxMFoiIGZpbGw9InVybCgjZ2xvd0dyYWRpZW50KSIgdHJhbnNmb3JtPSJyb3RhdGUoMTUwIDYwIDYwKSI+CiAgICAgICAgICAgIDxhbmltYXRlVHJhbnNmb3JtIGF0dHJpYnV0ZU5hbWU9InRyYW5zZm9ybSIgdHlwZT0icm90YXRlIiBmcm9tPSIxNTAgNjAgNjAiIHRvPSI1MTIgNjAgNjAiIGR1cj0iMTVzIiByZXBlYXRDb3VudD0iaW5kZWZpbml0ZSIgLz4KICAgICAgICAgIDwvcGF0aD4KICAgICAgICAgIDxwYXRoIGQ9Ik02MCAxMEExNSA1NSA5MCAwIDEgNjAgMjVBMTUgMTUgMjcwIDAgMSA2MCAxMFoiIGZpbGw9InVybCgjZ2xvd0dyYWRpZW50KSIgdHJhbnNmb3JtPSJyb3RhdGUoMjcwIDYwIDYwKSI+CiAgICAgICAgICAgIDxhbmltYXRlVHJhbnNmb3JtIGF0dHJpYnV0ZU5hbWU9InRyYW5zZm9ybSIgdHlwZT0icm90YXRlIiBmcm9tPSIyNzAgNjAgNjAiIHRvPSI2MzIgNjAgNjAiIGR1cj0iMTVzIiByZXBlYXRDb3VudD0iaW5kZWZpbml0ZSIgLz4KICAgICAgICAgIDwvcGF0aD4KICAgICAgICAgIDxjaXJjbGUgY3g9IjYwIiBjeT0iNjAiIHI9IjEyIiBmaWxsPSIjMUEwRjJCIiBzdHJva2U9IiMwQkQ3RDAiIHN0cm9rZS11aWR0aD0iMiIvPgogICAgICAgICAgPGNpcmNsZSBjeD9iNjAiIGN5PSI2MCIgcj0iNSIgZmlsbD0idXJsKCNnbG93R3JhZGllbnQpIi8+CiAgICAgIDwvZz4KICA8L2c+Cjwvc3ZnPg==" alt="AgentricAI Logo" className="h-7 w-7" />
@@ -468,17 +478,7 @@ const AgenticStudioApp: React.FC = () => {
                 <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path d="M11 5a1 1 0 10-2 0v5H4a1 1 0 100 2h5v5a1 1 0 102 0v-5h5a1 1 0 100-2h-5V5z" /></svg>
                 <span className="hidden md:inline">Define New Agent</span>
             </button>
-            <button onClick={() => setAppMode('echo')} className="bg-purple-600 hover:bg-purple-700 text-white px-3 py-1.5 rounded-md text-sm font-medium flex items-center space-x-1.5">
-                 <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path d="M10 12a2 2 0 100-4 2 2 0 000 4z" /><path fillRule="evenodd" d="M.458 10C3.732 4.943 7.522 3 10 3s6.268 1.943 9.542 7c-3.274 5.057-7.03 7-9.542 7S3.732 15.057.458 10zM14 10a4 4 0 11-8 0 4 4 0 018 0z" clipRule="evenodd" /></svg>
-                <span className="hidden md:inline">Open Echo View</span>
-            </button>
-            <span className={`text-xs px-2 py-1 rounded-md ${llmConfig.activeRuntime === 'gemini' ? (GEMINI_API_KEY ? 'bg-green-600' : 'bg-red-600') : 'bg-sky-600'}`}>
-                {llmStatusMessage}
-            </span>
-            <button onClick={() => { setTempLlmConfig(llmConfig); setShowSettingsModal(true); }} className="p-1.5 rounded-md hover:bg-neutral-700" title="LLM Settings">
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066 2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" /><path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
-            </button>
-            <button onClick={undo} disabled={!canUndo} className="p-1.5 rounded-md hover:bg-neutral-700 disabled:opacity-30 disabled:cursor-not-allowed" title="Undo (Ctrl+Z)">
+             <button onClick={undo} disabled={!canUndo} className="p-1.5 rounded-md hover:bg-neutral-700 disabled:opacity-30 disabled:cursor-not-allowed" title="Undo (Ctrl+Z)">
                 <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M11 15l-3-3m0 0l3-3m-3 3h8M3 12a9 9 0 1118 0 9 9 0 01-18 0z" /></svg>
             </button>
             <button onClick={redo} disabled={!canRedo} className="p-1.5 rounded-md hover:bg-neutral-700 disabled:opacity-30 disabled:cursor-not-allowed" title="Redo (Ctrl+Y)">
@@ -506,6 +506,18 @@ const AgenticStudioApp: React.FC = () => {
           onSave={handleSaveWorkflow}
           onLoad={handleLoadWorkflow}
           onDelete={handleDeleteWorkflow}
+          llmConfig={llmConfig}
+          onLlmSettingsSave={handleSaveLlmSettings}
+          hasApiKey={!!GEMINI_API_KEY}
+          // Pass mode states and setters
+          environment={environment}
+          setEnvironment={setEnvironment}
+          executionRuntime={executionRuntime}
+          setExecutionRuntime={setExecutionRuntime}
+          aiMode={aiMode}
+          setAiMode={setAiMode}
+          contextMemory={contextMemory}
+          setContextMemory={setContextMemory}
         />
         <div className="flex-grow h-full relative">
             <CanvasComponent
@@ -515,7 +527,7 @@ const AgenticStudioApp: React.FC = () => {
               onRemoveEdge={handleRemoveEdge} onViewTransformChange={setAppViewTransform} 
               highlightedNodeId={highlightedNodeId} activeDrawingToolNodeId={activeDrawingToolNodeId} 
               setActiveDrawingToolNodeId={setActiveDrawingToolNodeId} isWorkflowRunning={isWorkflowRunning} 
-              appMode={appMode} onRequestReview={(nodeId) => console.log(`Review requested for ${nodeId}`)}
+              appMode={environment} onRequestReview={(nodeId) => console.log(`Review requested for ${nodeId}`)}
               onInteractionEnd={handleInteractionEnd}
               onAddNode={onAddNode}
             />
@@ -526,7 +538,7 @@ const AgenticStudioApp: React.FC = () => {
         isOpen={showDefineNodeModal}
         onClose={() => setShowDefineNodeModal(false)}
         onDefine={async (prompt) => {
-            const config = await llmService.defineNodeFromPrompt(prompt, appMode === 'sandbox');
+            const config = await llmService.defineNodeFromPrompt(prompt, environment === 'sandbox');
             if (config) {
                 const completeConfig: DynamicNodeConfig = { ...config, isDynamic: true, category: "Custom Agents" };
                 setAvailableAgents(prev => [...prev, completeConfig]);
@@ -534,41 +546,9 @@ const AgenticStudioApp: React.FC = () => {
             }
             return { success: false, error: "LLM failed to return a valid node configuration." };
         }}
-        isSandbox={appMode === 'sandbox'}
+        isSandbox={environment === 'sandbox'}
       />
 
-      {showSettingsModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4">
-          <div className="bg-neutral-900 p-6 rounded-lg shadow-2xl w-full max-w-lg border-4 border-dotted border-neutral-800">
-            <h2 className="text-xl font-semibold mb-6 text-sky-400">LLM Settings</h2>
-            <div className="space-y-4">
-                <div>
-                    <label className="block text-sm font-medium text-gray-300 mb-1">Active Runtime</label>
-                    <select value={tempLlmConfig.activeRuntime} onChange={(e) => setTempLlmConfig({...tempLlmConfig, activeRuntime: e.target.value as LlmServiceConfig['activeRuntime']})}
-                        className="w-full p-2 bg-neutral-800 border border-neutral-700 rounded-md text-gray-200">
-                        {GEMINI_API_KEY && <option value="gemini">Gemini (Cloud)</option>}
-                        <option value="local_lm_studio">Local (LM Studio)</option>
-                        <option value="local_ollama">Local (Ollama)</option>
-                    </select>
-                </div>
-                <div>
-                     <label className="block text-sm font-medium text-gray-300 mb-1">LM Studio Base URL</label>
-                     <input type="text" value={tempLlmConfig.localEndpoints.lm_studio.baseUrl} onChange={(e) => setTempLlmConfig({...tempLlmConfig, localEndpoints: {...tempLlmConfig.localEndpoints, lm_studio: {...tempLlmConfig.localEndpoints.lm_studio, baseUrl: e.target.value}}})}
-                        className="w-full p-2 bg-neutral-800 border border-neutral-700 rounded-md text-gray-200" placeholder="http://localhost:1234/v1"/>
-                </div>
-                 <div>
-                     <label className="block text-sm font-medium text-gray-300 mb-1">Ollama Base URL</label>
-                     <input type="text" value={tempLlmConfig.localEndpoints.ollama.baseUrl} onChange={(e) => setTempLlmConfig({...tempLlmConfig, localEndpoints: {...tempLlmConfig.localEndpoints, ollama: {...tempLlmConfig.localEndpoints.ollama, baseUrl: e.target.value}}})}
-                        className="w-full p-2 bg-neutral-800 border border-neutral-700 rounded-md text-gray-200" placeholder="http://localhost:11434/v1"/>
-                </div>
-            </div>
-            <div className="mt-8 flex justify-end space-x-3">
-              <button onClick={() => setShowSettingsModal(false)} className="px-4 py-2 text-sm bg-neutral-700 hover:bg-neutral-600 rounded-md">Cancel</button>
-              <button onClick={handleSaveLlmSettings} className="px-4 py-2 text-sm text-white bg-sky-600 hover:bg-sky-700 rounded-md">Save Settings</button>
-            </div>
-          </div>
-        </div>
-      )}
       <MechanicStatus />
     </div>
   );

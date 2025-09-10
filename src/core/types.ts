@@ -4,7 +4,11 @@ import type { ReactNode } from "react";
 import { GroundingMetadata } from "@google/genai";
 
 // App modes
-export type AppMode = 'studio' | 'echo' | 'sandbox';
+export type Environment = 'studio' | 'echo' | 'sandbox';
+export type ExecutionRuntime = 'net' | 'local' | 'native';
+export type AiMode = 'agent' | 'assist' | 'chat';
+export type ContextMemory = 'full' | 'recent' | 'none';
+
 
 // Enum for built-in, non-dynamic node types
 export enum NodeType {
@@ -128,7 +132,7 @@ export interface NodeComponentProps {
   isHighlighted?: boolean;
   activeDrawingToolNodeId: string | null;
   setActiveDrawingToolNodeId: (nodeId: string | null) => void;
-  appMode: AppMode;
+  appMode: Environment;
   onRequestReview: (nodeId: string) => void;
 }
 
@@ -144,7 +148,7 @@ export interface CanvasComponentProps {
   updateNodeInternalState: (nodeId: string, dataChanges: Partial<NodeData['data']>, status?: NodeData['status'], error?: string | null, executionTime?: string, suggestion?: string, isSuggestionLoading?: boolean) => void;
   onRemoveNode: (nodeId: string) => void;
   onRemoveEdge: (edgeId: string) => void;
-  appMode: AppMode;
+  appMode: Environment;
   onRequestReview: (nodeId: string) => void;
   isWorkflowRunning: boolean;
 }
@@ -172,7 +176,7 @@ export interface NodeExecutionResult {
 export type NodeExecutionFunction = (
   node: NodeData,
   llmService: LlmService,
-  appMode: AppMode
+  appMode: Environment
 ) => Promise<NodeExecutionResult>;
 
 export interface ExecutionHistoryEntry {

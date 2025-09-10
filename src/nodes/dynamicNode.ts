@@ -1,5 +1,5 @@
 
-import type { NodeExecutionFunction, NodeExecutionResult, NodeData, AppMode, LlmService } from '../core/types';
+import type { NodeExecutionFunction, NodeExecutionResult, NodeData, Environment, LlmService } from '../core/types';
 
 /**
  * Executes a dynamic node based on its executionLogicPrompt.
@@ -8,7 +8,8 @@ import type { NodeExecutionFunction, NodeExecutionResult, NodeData, AppMode, Llm
 export const execute: NodeExecutionFunction = async (
   node: NodeData,
   llmService: LlmService,
-  appMode: AppMode
+  // FIX: Module '"../core/types"' has no exported member 'AppMode'. The correct type is 'Environment'.
+  appMode: Environment
 ): Promise<NodeExecutionResult> => {
   if (!node.executionLogicPrompt) {
     return { error: "Node is dynamic but has no execution logic prompt." };

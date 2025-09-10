@@ -1,5 +1,5 @@
 
-import type { NodeExecutionFunction, NodeExecutionResult, NodeData, LlmService, AppMode } from '../core/types';
+import type { NodeExecutionFunction, NodeExecutionResult, NodeData, LlmService, Environment } from '../core/types';
 
 /**
  * A generic execution function for simple LLM prompt nodes.
@@ -8,7 +8,8 @@ import type { NodeExecutionFunction, NodeExecutionResult, NodeData, LlmService, 
 export const execute: NodeExecutionFunction = async (
   node: NodeData,
   llmService: LlmService,
-  appMode: AppMode
+  // FIX: Module '"../core/types"' has no exported member 'AppMode'. The correct type is 'Environment'.
+  appMode: Environment
 ): Promise<NodeExecutionResult> => {
   const inputPort = node.inputs.find(p => p.id === 'prompt_in');
   const outputPort = node.outputs.find(p => p.id === 'response_out');

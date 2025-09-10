@@ -1,4 +1,5 @@
 
+
 import React from 'react';
 import type { EchoTask } from '../../src/core/types';
 
@@ -21,7 +22,8 @@ const ActivityCard: React.FC<ActivityCardProps> = ({ task, onStartTask }) => {
   const cardClasses = [
     'relative', 'flex-shrink-0', 'w-48', 'h-64', 'bg-neutral-900',
     'rounded-xl', 'p-4', 'flex', 'flex-col', 'items-center', 'justify-center',
-    'transition-all', 'duration-300', 'cursor-pointer', 'border-4',
+    'transition-all', 'duration-500', // Increased duration for smoother fade
+    'cursor-pointer', 'border-4',
     getEngagementColor(),
     task.status === 'completed' ? 'opacity-40 grayscale' : '',
     task.status === 'current' ? 'transform scale-110 shadow-lg z-10' : 'hover:scale-105',

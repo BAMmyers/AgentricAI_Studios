@@ -64,11 +64,18 @@ function NodeComponent({
   
   const isSandboxedNode = appMode === 'sandbox' && node.isDynamic && !node.isImmutable && !node.isPromoted;
 
-  const rivetBorder = isHighlighted && !isEffectivelyDisabled
-    ? 'border-4 border-dotted border-sky-400'
-    : isSandboxedNode ? 'border-4 border-dashed border-yellow-400' 
-    : 'border-4 border-dotted border-neutral-800';
-  
+  const borderClass = useMemo(() => {
+    if (isHighlighted && !isEffectivelyDisabled) return 'border-sky-400';
+    if (isSandboxedNode) return 'border-yellow-400';
+
+    switch (node.status) {
+      case 'success': return 'node-status-success-border';
+      case 'error': return 'node-status-error-border';
+      case 'running': return 'node-status-running-border'; // For animation
+      default: return 'border-neutral-800';
+    }
+  }, [isHighlighted, isEffectivelyDisabled, isSandboxedNode, node.status]);
+
   const computedBoxShadowColor = useMemo(() => {
     if (isEffectivelyDisabled) return 'rgba(0, 0, 0, 0.3)';
     if (isHighlighted) return 'rgba(56, 189, 248, 0.6)'; // sky-400
@@ -353,13 +360,15 @@ function NodeComponent({
     flexDirection: 'column',
     boxShadow: `0 0 10px ${computedBoxShadowColor}`,
     opacity: isEffectivelyDisabled ? 0.6 : 1,
-    transition: 'opacity 0.3s ease-in-out, box-shadow 0.3s ease-in-out',
+    transition: 'opacity 0.3s ease-in-out, box-shadow 0.3s ease-in-out, border-color 0.3s ease-in-out',
+    borderStyle: isSandboxedNode ? 'dashed' : 'dotted',
+    borderWidth: '4px',
   };
   
   return (
     <div
       id={node.id}
-      className={`draggable-node absolute shadow-lg rounded-md ${nodeBaseBg} ${rivetBorder} transition-all duration-150 group`}
+      className={`draggable-node absolute shadow-lg rounded-md ${nodeBaseBg} ${borderClass} transition-all duration-150 group`}
       style={nodeStyle}
     >
       <div className={`node-header p-1.5 h-9 flex items-center rounded-t-sm ${nodeHeaderBg} cursor-grab`}>
