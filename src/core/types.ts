@@ -196,6 +196,15 @@ export interface SavedWorkflow {
     lastSaved: string;
 }
 
+// FIX: Add missing EventLog interface.
+export interface EventLog {
+  id: number;
+  agent: string;
+  event: string;
+  timestamp: string;
+  details: Record<string, any>;
+}
+
 
 // --- Echo Project Types ---
 export type TaskStatus = 'upcoming' | 'current' | 'completed';

@@ -1,5 +1,6 @@
 
 
+
 import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import { initialSystemAgents } from './src/core/agentDefinitions';
 import type { NodeData, Edge, DynamicNodeConfig, Point, Environment, LlmServiceConfig, ExecutionHistoryEntry, SavedWorkflow, ExecutionRuntime, AiMode, ContextMemory } from './src/core/types';
@@ -155,10 +156,9 @@ const AgenticStudioApp: React.FC = () => {
     }
 
     const handler = setTimeout(() => {
-        if (nodes.length > 0 || edges.length > 0) {
-            console.log("Autosaving session to database...");
-            databaseService.saveWorkflow('__autosave', nodes, edges);
-        }
+        // Always save the current state, even if empty, to correctly persist a cleared canvas.
+        console.log("Autosaving session to database...");
+        databaseService.saveWorkflow('__autosave', nodes, edges);
     }, 1000); // 1-second debounce
 
     return () => {
@@ -413,6 +413,23 @@ const AgenticStudioApp: React.FC = () => {
     setHighlightedNodeId(null);
   };
   
+  // FIX: Add handler for defining new nodes from the modal.
+  const handleDefineNode = useCallback(async (userDescription: string): Promise<{ success: boolean; error?: string }> => {
+    const newAgentConfig = await llmService.defineNodeFromPrompt(userDescription, environment === 'sandbox');
+    if (newAgentConfig) {
+      setAvailableAgents(prev => [...prev, { ...newAgentConfig, isDynamic: true, category: 'Custom Agents' }]);
+      return { success: true };
+    }
+    return { success: false, error: "The AI failed to define a valid node from your description. Please try rephrasing your request." };
+  }, [environment]);
+
+  // FIX: Add handler for the 'Request Review' action on sandboxed nodes.
+  const handleRequestReview = useCallback((nodeId: string) => {
+    console.log(`Review requested for node ${nodeId}. This feature is a placeholder.`);
+    // In a real implementation, this would trigger a review process.
+    updateNodeInternalState(nodeId, {}, 'success', "Review simulation complete: Approved!", '0s');
+  }, [updateNodeInternalState]);
+
   const handleSaveWorkflow = async () => {
     const name = currentWorkflowName.trim();
     if (!name || name === '__autosave') {
@@ -526,32 +543,27 @@ const AgenticStudioApp: React.FC = () => {
               updateNodeInternalState={updateNodeInternalState} onRemoveNode={onRemoveNode}
               onRemoveEdge={handleRemoveEdge} onViewTransformChange={setAppViewTransform} 
               highlightedNodeId={highlightedNodeId} activeDrawingToolNodeId={activeDrawingToolNodeId} 
-              setActiveDrawingToolNodeId={setActiveDrawingToolNodeId} isWorkflowRunning={isWorkflowRunning} 
-              appMode={environment} onRequestReview={(nodeId) => console.log(`Review requested for ${nodeId}`)}
+              setActiveDrawingToolNodeId={setActiveDrawingToolNodeId} isWorkflowRunning={isWorkflowRunning}
+              // FIX: Pass missing required props to satisfy the CanvasComponentProps type.
               onInteractionEnd={handleInteractionEnd}
               onAddNode={onAddNode}
+              appMode={environment}
+              onRequestReview={handleRequestReview}
             />
         </div>
       </main>
-
-      <DefineNodeModal 
-        isOpen={showDefineNodeModal}
-        onClose={() => setShowDefineNodeModal(false)}
-        onDefine={async (prompt) => {
-            const config = await llmService.defineNodeFromPrompt(prompt, environment === 'sandbox');
-            if (config) {
-                const completeConfig: DynamicNodeConfig = { ...config, isDynamic: true, category: "Custom Agents" };
-                setAvailableAgents(prev => [...prev, completeConfig]);
-                return { success: true };
-            }
-            return { success: false, error: "LLM failed to return a valid node configuration." };
-        }}
-        isSandbox={environment === 'sandbox'}
-      />
-
       <MechanicStatus />
+      {showDefineNodeModal && (
+        <DefineNodeModal 
+          isOpen={showDefineNodeModal} 
+          onClose={() => setShowDefineNodeModal(false)}
+          onDefine={handleDefineNode}
+          isSandbox={environment === 'sandbox'}
+        />
+      )}
     </div>
   );
 };
 
+// FIX: Add default export to the component.
 export default AgenticStudioApp;

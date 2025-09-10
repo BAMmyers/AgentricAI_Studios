@@ -1,7 +1,7 @@
 
 import initSqlJs from 'sql.js';
 import type { Database } from 'sql.js';
-import type { DynamicNodeConfig, NodeData, Edge, SavedWorkflow } from '../core/types';
+import type { DynamicNodeConfig, NodeData, Edge, SavedWorkflow, EventLog, BugReport } from '../core/types';
 
 // Wrapper for IndexedDB to store the SQLite file
 const IDB_CONFIG = {
@@ -18,9 +18,10 @@ function getIDB(): Promise<IDBDatabase> {
             const request = indexedDB.open(IDB_CONFIG.DB_NAME, 1);
             request.onerror = () => reject(request.error);
             request.onsuccess = () => resolve(request.result);
-            request.onupgradeneeded = () => {
-                if (!request.result.objectStoreNames.contains(IDB_CONFIG.STORE_NAME)) {
-                    request.result.createObjectStore(IDB_CONFIG.STORE_NAME);
+            request.onupgradeneeded = (event) => {
+                const db = (event.target as IDBOpenDBRequest).result;
+                if (!db.objectStoreNames.contains(IDB_CONFIG.STORE_NAME)) {
+                    db.createObjectStore(IDB_CONFIG.STORE_NAME);
                 }
             };
         });
@@ -35,7 +36,7 @@ async function getFileFromIDB(): Promise<Uint8Array | null> {
         const store = transaction.objectStore(IDB_CONFIG.STORE_NAME);
         const request = store.get(IDB_CONFIG.DB_FILE_KEY);
         request.onerror = () => reject(request.error);
-        request.onsuccess = () => resolve(request.result || null);
+        request.onsuccess = () => resolve((request.result as Uint8Array) || null);
     });
 }
 
@@ -60,13 +61,14 @@ class DatabaseService {
 
         try {
             const SQL = await initSqlJs({
-                locateFile: file => `https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.3/${file}`
+                locateFile: file => `https://esm.sh/sql.js@1.10.3/dist/${file}`
             });
 
             const dbFile = await getFileFromIDB();
             if (dbFile) {
                 console.log("AgentricAI Studios: Loading database from IndexedDB...");
                 this.db = new SQL.Database(dbFile);
+                this.verifyAndCreateSchema();
             } else {
                 console.log("AgentricAI Studios: No existing database found. Creating a new one.");
                 this.db = new SQL.Database();
@@ -75,27 +77,35 @@ class DatabaseService {
             this.isInitialized = true;
             console.log("AgentricAI Studios: Database service initialized successfully.");
         } catch (e) {
-            console.error("Failed to initialize database service:", e);
-            throw e; // Re-throw to allow the caller to handle critical init failure
+            console.error("Failed to initialize database service. The application may not save data correctly.", e);
         }
     }
     
+    private verifyAndCreateSchema(): void {
+        if (!this.db) return;
+        const tables = ['workflows', 'custom_agents', 'bug_reports', 'event_logs'];
+        const existingTables = this.db.exec("SELECT name FROM sqlite_master WHERE type='table';")[0]?.values.flat() || [];
+        
+        if (!existingTables.includes('workflows')) {
+            this.db.run(`CREATE TABLE workflows (name TEXT PRIMARY KEY, nodes TEXT, edges TEXT, lastSaved TEXT);`);
+        }
+        if (!existingTables.includes('custom_agents')) {
+            this.db.run(`CREATE TABLE custom_agents (name TEXT PRIMARY KEY, config TEXT);`);
+        }
+        if (!existingTables.includes('bug_reports')) {
+             this.db.run(`CREATE TABLE bug_reports (id TEXT PRIMARY KEY, report TEXT);`);
+        }
+        if (!existingTables.includes('event_logs')) {
+             this.db.run(`CREATE TABLE event_logs (id INTEGER PRIMARY KEY AUTOINCREMENT, agent TEXT, event TEXT, timestamp TEXT, details TEXT);`);
+        }
+    }
+
     private createSchema(): void {
         if (!this.db) return;
-        this.db.run(`
-            CREATE TABLE workflows (
-                name TEXT PRIMARY KEY,
-                nodes TEXT NOT NULL,
-                edges TEXT NOT NULL,
-                lastSaved TEXT NOT NULL
-            );
-        `);
-        this.db.run(`
-            CREATE TABLE custom_agents (
-                name TEXT PRIMARY KEY,
-                config TEXT NOT NULL
-            );
-        `);
+        this.db.run(`CREATE TABLE workflows (name TEXT PRIMARY KEY, nodes TEXT, edges TEXT, lastSaved TEXT);`);
+        this.db.run(`CREATE TABLE custom_agents (name TEXT PRIMARY KEY, config TEXT);`);
+        this.db.run(`CREATE TABLE bug_reports (id TEXT PRIMARY KEY, report TEXT);`);
+        this.db.run(`CREATE TABLE event_logs (id INTEGER PRIMARY KEY AUTOINCREMENT, agent TEXT, event TEXT, timestamp TEXT, details TEXT);`);
         this.persistDatabase();
     }
 
@@ -110,29 +120,67 @@ class DatabaseService {
     }
     
     public async saveWorkflow(name: string, nodes: NodeData[], edges: Edge[]): Promise<void> {
-        if (!this.db) return;
-        this.db.run("INSERT OR REPLACE INTO workflows (name, nodes, edges, lastSaved) VALUES (?, ?, ?, ?)", [
-            name,
-            JSON.stringify(nodes),
-            JSON.stringify(edges),
-            new Date().toISOString()
-        ]);
-        await this.persistDatabase();
+        if (!this.db) {
+            console.warn("Database not initialized, skipping save.");
+            return;
+        }
+
+        let nodesJson: string;
+        let edgesJson: string;
+
+        try {
+            const nodesToSave = Array.isArray(nodes) ? nodes : [];
+            nodesJson = JSON.stringify(nodesToSave);
+        } catch (e) {
+            console.error(`Failed to stringify nodes for workflow "${name}". Saving as empty array.`, e);
+            nodesJson = "[]";
+        }
+
+        try {
+            const edgesToSave = Array.isArray(edges) ? edges : [];
+            edgesJson = JSON.stringify(edgesToSave);
+        } catch (e) {
+            console.error(`Failed to stringify edges for workflow "${name}". Saving as empty array.`, e);
+            edgesJson = "[]";
+        }
+
+        if (typeof nodesJson !== 'string') {
+            console.error(`Node data for "${name}" resulted in a non-string value after stringify. Saving as empty array.`);
+            nodesJson = "[]";
+        }
+        if (typeof edgesJson !== 'string') {
+            console.error(`Edge data for "${name}" resulted in a non-string value after stringify. Saving as empty array.`);
+            edgesJson = "[]";
+        }
+
+        try {
+            this.db.run("INSERT OR REPLACE INTO workflows (name, nodes, edges, lastSaved) VALUES (?, ?, ?, ?)", [
+                name,
+                nodesJson,
+                edgesJson,
+                new Date().toISOString()
+            ]);
+            await this.persistDatabase();
+        } catch (e) {
+            console.error(`Failed to save workflow "${name}" to SQL database:`, e);
+        }
     }
 
     public async loadWorkflow(name: string): Promise<SavedWorkflow | null> {
         if (!this.db) return null;
+        let stmt;
         try {
-            const stmt = this.db.prepare("SELECT * FROM workflows WHERE name = :name");
+            stmt = this.db.prepare("SELECT * FROM workflows WHERE name = :name");
             const result = stmt.getAsObject({ ':name': name });
-            stmt.free();
             if (Object.keys(result).length === 0) return null;
 
-            const nodesStr = result.nodes as string;
-            const edgesStr = result.edges as string;
+            const nodesStr = result.nodes as string | null;
+            const edgesStr = result.edges as string | null;
 
             if (typeof nodesStr !== 'string' || typeof edgesStr !== 'string') {
-                throw new Error("Corrupted workflow data: nodes or edges are not strings.");
+                console.error(`Corrupted workflow data for "${name}": nodes or edges are not valid strings. Deleting entry.`);
+                await this.deleteWorkflow(name);
+                return null;
             }
 
             const nodes = JSON.parse(nodesStr);
@@ -146,9 +194,10 @@ class DatabaseService {
             };
         } catch (e) {
             console.error(`Failed to load or parse workflow "${name}":`, e);
-            // If parsing fails, it's safer to treat it as not found and delete the corrupted entry
-            this.deleteWorkflow(name).catch(delErr => console.error(`Failed to delete corrupted workflow "${name}":`, delErr));
+            await this.deleteWorkflow(name);
             return null;
+        } finally {
+            stmt?.free();
         }
     }
 
@@ -161,10 +210,10 @@ class DatabaseService {
                 for (const row of results[0].values) {
                     const name = row[0] as string;
                     try {
-                        const nodesStr = row[1] as string;
-                        const edgesStr = row[2] as string;
+                        const nodesStr = row[1] as string | null;
+                        const edgesStr = row[2] as string | null;
                         if (typeof nodesStr !== 'string' || typeof edgesStr !== 'string') {
-                           console.error(`Skipping corrupted workflow "${name}": data is not a string.`);
+                           console.error(`Skipping corrupted workflow "${name}": data is not a valid string.`);
                            continue;
                         }
                         const nodes = JSON.parse(nodesStr);
@@ -189,19 +238,45 @@ class DatabaseService {
 
     public async deleteWorkflow(name: string): Promise<void> {
         if (!this.db) return;
-        this.db.run("DELETE FROM workflows WHERE name = ?", [name]);
-        await this.persistDatabase();
+        try {
+            this.db.run("DELETE FROM workflows WHERE name = ?", [name]);
+            await this.persistDatabase();
+        } catch (e) {
+            console.error(`Failed to delete workflow "${name}":`, e);
+        }
     }
 
     public async saveCustomAgents(agents: DynamicNodeConfig[]): Promise<void> {
         if (!this.db) return;
-        this.db.run("DELETE FROM custom_agents");
-        const stmt = this.db.prepare("INSERT INTO custom_agents (name, config) VALUES (?, ?)");
-        agents.forEach(agent => {
-            stmt.run([agent.name, JSON.stringify(agent)]);
-        });
-        stmt.free();
-        await this.persistDatabase();
+        let stmt;
+        const agentsToSave = Array.isArray(agents) ? agents : [];
+
+        try {
+            this.db.run("BEGIN TRANSACTION;");
+            this.db.run("DELETE FROM custom_agents");
+            stmt = this.db.prepare("INSERT INTO custom_agents (name, config) VALUES (?, ?)");
+            
+            agentsToSave.forEach(agent => {
+                try {
+                    const agentJson = JSON.stringify(agent);
+                    if (typeof agentJson === 'string') {
+                        stmt.run([agent.name, agentJson]);
+                    } else {
+                        console.error(`Failed to save custom agent "${agent.name}": stringify result was not a string.`);
+                    }
+                } catch (e) {
+                    console.error(`Failed to stringify custom agent "${agent.name}". Skipping.`, e);
+                }
+            });
+
+            this.db.run("COMMIT;");
+            await this.persistDatabase();
+        } catch(e) {
+            console.error("Failed to save custom agents:", e);
+            if(this.db) this.db.run("ROLLBACK;");
+        } finally {
+            stmt?.free();
+        }
     }
 
     public async loadCustomAgents(): Promise<DynamicNodeConfig[]> {
@@ -212,14 +287,19 @@ class DatabaseService {
             if (results[0]) {
                 for (const row of results[0].values) {
                     try {
-                        const configStr = row[0] as string;
+                        const configStr = row[0] as string | null;
                         if(typeof configStr !== 'string') {
-                            console.error(`Skipping corrupted custom agent: data is not a string.`, `Raw data: ${row[0]}`);
+                            console.error(`Skipping corrupted custom agent: data is not a valid string.`);
                             continue;
                         }
-                        agents.push(JSON.parse(configStr));
+                        const agentConfig = JSON.parse(configStr);
+                        if(agentConfig && typeof agentConfig === 'object' && agentConfig.name) {
+                            agents.push(agentConfig);
+                        } else {
+                            console.error(`Skipping corrupted custom agent: parsed data is not a valid agent object.`);
+                        }
                     } catch (e) {
-                        console.error(`Skipping corrupted custom agent due to parsing error:`, e, `Raw data: ${row[0]}`);
+                        console.error(`Skipping corrupted custom agent due to parsing error:`, e);
                     }
                 }
             }
@@ -227,6 +307,83 @@ class DatabaseService {
             console.error("Failed to execute query to load custom agents:", e);
         }
         return agents;
+    }
+
+    public async saveBugReport(bug: BugReport): Promise<void> {
+        if (!this.db) return;
+        try {
+            this.db.run("INSERT OR REPLACE INTO bug_reports (id, report) VALUES (?, ?)", [
+                bug.id,
+                JSON.stringify(bug)
+            ]);
+            await this.persistDatabase();
+        } catch (e) {
+            console.error(`Failed to save bug report "${bug.id}":`, e);
+        }
+    }
+
+    public async loadBugReports(): Promise<BugReport[]> {
+        if (!this.db) return [];
+        const reports: BugReport[] = [];
+        try {
+            const results = this.db.exec("SELECT report FROM bug_reports");
+            if (results[0]) {
+                for (const row of results[0].values) {
+                    try {
+                        const reportStr = row[0] as string | null;
+                        if (typeof reportStr === 'string') {
+                            reports.push(JSON.parse(reportStr));
+                        }
+                    } catch (e) {
+                         console.error("Skipping corrupted bug report due to parsing error:", e);
+                    }
+                }
+            }
+        } catch (e) {
+            console.error("Failed to load bug reports:", e);
+        }
+        return reports;
+    }
+
+    public async logEvent(agent: string, event: string, details: Record<string, any>): Promise<void> {
+        if (!this.db) return;
+        try {
+            this.db.run("INSERT INTO event_logs (agent, event, timestamp, details) VALUES (?, ?, ?, ?)", [
+                agent,
+                event,
+                new Date().toISOString(),
+                JSON.stringify(details)
+            ]);
+            await this.persistDatabase();
+        } catch(e) {
+            console.error(`Failed to log event for agent "${agent}":`, e);
+        }
+    }
+
+    public async getEventLogs(): Promise<EventLog[]> {
+        if (!this.db) return [];
+        const logs: EventLog[] = [];
+        try {
+            const results = this.db.exec("SELECT * FROM event_logs ORDER BY timestamp DESC LIMIT 100");
+             if (results[0]) {
+                for (const row of results[0].values) {
+                    try {
+                        logs.push({
+                            id: row[0] as number,
+                            agent: row[1] as string,
+                            event: row[2] as string,
+                            timestamp: row[3] as string,
+                            details: JSON.parse(row[4] as string)
+                        });
+                    } catch (e) {
+                        console.error("Skipping corrupted event log due to parsing error:", e);
+                    }
+                }
+            }
+        } catch(e) {
+            console.error("Failed to load event logs:", e);
+        }
+        return logs;
     }
 }
 
