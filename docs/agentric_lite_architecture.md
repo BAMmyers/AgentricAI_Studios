@@ -1,76 +1,66 @@
 # AgentricAI Studios: "Lite" Architecture for Local & Offline Use
 
-## 1. Vision for AgentricAI Lite
+## 1. Vision for AgentricAI Lite: Privacy, Control, and Offline Capability
 
-AgentricAI Studios aims to provide a powerful and flexible AI workflow environment, "powered by Google Technologies." To enhance user privacy, enable offline capabilities, reduce reliance on cloud service costs (for the user), and cater to users who wish to run their own models, an "AgentricAI Lite" mode is conceptualized.
+AgentricAI Studios aims to provide a powerful and flexible AI workflow environment, "powered by Google Technologies." To enhance user privacy, enable offline capabilities, eliminate cloud service costs for the user, and cater to advanced users who wish to run their own models, an **"AgentricAI Lite"** mode is a core feature.
+
+This mode stands in contrast to the conceptual **High-Performance Architecture** (which would leverage cloud/on-premise GPU clusters and platforms like NVIDIA's for massive scale). "Lite" mode is architected to be self-contained, running entirely on the user's local machine.
 
 This mode allows users to leverage:
-*   **Local Large Language Models (LLMs):** Primarily by interfacing with local LLM servers like LM Studio, which often provide OpenAI-compatible API endpoints.
-*   **Local Database Storage:** Utilizing browser-based storage (e.g., IndexedDB) for workflows, agent configurations, and cached results.
+*   **Local Large Language Models (LLMs):** Primarily by interfacing with local LLM servers like LM Studio or Ollama, which provide OpenAI-compatible API endpoints.
+*   **Local Database Storage:** Utilizing a browser-based SQLite database (via `sql.js`) with persistence in IndexedDB for all workflows, agent configurations, logs, and results.
 
-The goal is to allow seamless switching between the default online mode (using Google Gemini and cloud services) and this "Lite" local mode, with AgentricAI Studios intelligently adapting its functionality.
+The goal is to allow seamless switching between the default online mode (using Google Gemini) and this "Lite" local mode, with AgentricAI Studios intelligently adapting its functionality.
 
 ## 2. Core Components of "Lite" Mode
 
 ### 2.1. Local LLM Runtime
 
-*   **Interface:** AgentricAI Studios will communicate with local LLMs that expose an OpenAI-compatible API endpoint. LM Studio is a primary example, typically running a server on `http://localhost:1234/v1`.
-*   **User Configuration:** Users will be able to specify the endpoint URL for their local LLM server within AgentricAI Studios settings.
-*   **Model Agnostic (to a degree):** While the API interface is standardized, the actual capabilities (reasoning, instruction following, JSON output generation) will depend on the specific model the user is running locally. AgentricAI Studios will send prompts assuming a capable instruction-following model.
-*   **Service Abstraction:** The internal `llmService.ts` will abstract the calls, directing requests to either Gemini or the configured local endpoint based on the selected runtime.
+*   **Interface:** AgentricAI Studios communicates with local LLMs that expose an OpenAI-compatible API endpoint. LM Studio and Ollama are primary supported examples.
+*   **User Configuration:** Users have full control to specify the endpoint URL and model name for their local LLM server within AgentricAI Studios settings.
+*   **Model Agnostic:** While the API interface is standardized, the actual capabilities (reasoning, instruction following, JSON output generation) depend entirely on the specific model the user is running locally. AgentricAI Studios sends prompts assuming a capable instruction-following model.
+*   **Service Abstraction:** The internal `llmService.ts` abstracts all LLM calls, transparently directing requests to either the Google Gemini API or the configured local endpoint based on the user's selected runtime.
 
-### 2.2. Local Database (Conceptual)
+### 2.2. Local Persistent Database
 
-*   **Technology:** Primarily `IndexedDB` in the browser. This allows for structured storage of:
-    *   User-created workflows (nodes and edges).
-    *   Custom agent definitions (`DynamicNodeConfig`).
-    *   Cached results from frequently run agents or prompts.
-    *   User preferences and settings specific to "Lite" mode within AgentricAI Studios.
+*   **Technology:** A full-featured SQLite database running in the browser via `sql.js`. The entire database file is persisted as a binary blob within the browser's `IndexedDB`.
 *   **Benefits:**
-    *   **Offline Access:** Users can load, view, and potentially modify existing workflows and agent definitions even when offline.
-    *   **Reduced Latency:** Fetching cached data locally is much faster than network requests.
-    *   **Privacy:** Data processed and stored locally remains on the user's machine by default.
-*   **"Log Agent" and "DB" Juggernaut Adaptation:** In "Lite" mode, the "Log Agent" would primarily direct logs to the local IndexedDB instance, managed conceptually by a local-facing version of the "DB" Juggernaut's logic.
+    *   **True Offline Access:** Users can load, view, modify, and save all workflows and agent definitions even when completely offline.
+    *   **Data Integrity:** Provides transactional integrity for all operations, preventing data corruption.
+    *   **Performance & Scalability:** Far superior to `localStorage` for managing complex workflows and large numbers of custom agents.
+    *   **Privacy:** All user-created data (workflows, agents, logs, results) remains on the user's machine by default and is never transmitted externally.
+*   **"Log Agent" and "DB" Juggernaut Adaptation:** In "Lite" mode, the "Log Agent" directs all structured logs to the local SQLite instance, which is managed conceptually by a local-facing version of the "DB" Juggernaut's logic.
 
 ## 3. User Experience
 
-*   **Runtime Switcher:** A clear UI element (e.g., dropdown in the AgentricAI Studios sidebar) will allow users to switch between "Gemini (Cloud)" and "Local LLM (LM Studio)".
-*   **Endpoint Configuration:** When "Local LLM" is selected, an input field will appear for the user to enter/confirm their local server endpoint.
-*   **Status Indication:** The UI should subtly indicate which runtime is currently active.
-*   **Feature Availability:** Some features might be different or unavailable in "Lite" mode:
-    *   **Image Generation:** Most local LLM setups don't include an equivalent to Imagen out-of-the-box via the OpenAI chat API. The "Image Generator" node might be disabled or return an informative message in "Lite" mode.
-    *   **Web Search Grounding:** `requiresWebSearch: true` for agents like "The Mad Scientist" will not function if the local LLM doesn't have built-in web search capabilities. The results will be based purely on the model's internal knowledge. Nodes should gracefully handle this.
-    *   **Juggernaut Agent Capabilities:** The effectiveness of complex Juggernaut agents in AgentricAI Studios will depend heavily on the quality of the local LLM. Some administrative agents might have reduced scope or rely more on cached policies in "Lite" mode.
+*   **Runtime Switcher:** A clear UI element in the settings panel allows users to switch between "Gemini (Cloud)" and "Local LLM".
+*   **Endpoint Configuration:** When "Local LLM" is selected, input fields appear for the user to enter their local server endpoint and model details.
+*   **Status Indication:** The UI clearly indicates which runtime is currently active.
+*   **Graceful Feature Degradation:** Some features may be different or unavailable in "Lite" mode, and the UI handles this gracefully:
+    *   **Image Generation:** The "Image Generator" node will attempt to use the local endpoint. If the user's local model does not support image generation, it will return a clear, informative error instead of failing silently.
+    *   **Web Search Grounding:** Agents requiring web search will not function if the local LLM lacks this capability. The results will be based purely on the model's internal knowledge. The node will indicate that the result is from local knowledge only.
+    *   **Juggernaut Agent Capabilities:** The effectiveness of complex Juggernaut agents will depend heavily on the quality of the local LLM.
 
-## 4. Data Synchronization Strategy (Conceptual for Future Development)
+## 4. Data Synchronization Strategy (Conceptual)
 
-*   **Initial State:** "Lite" mode is primarily local-first.
-*   **Optional Sync:** In the future, users could be given an option to:
-    *   **Export/Import:** Manually export their local AgentricAI Studios workflows/agents to a file and import them into an online account or another instance.
-    *   **Selective Cloud Sync:** If a user logs into an AgentricAI Studios account (if such a feature is built), they could choose to sync specific local workflows or agent definitions to a central cloud store. This would be explicitly user-initiated.
-*   **Conflict Resolution:** If data exists both locally and centrally, a clear strategy for conflict resolution would be needed (e.g., "last write wins," user chooses).
+*   **Local-First Principle:** "Lite" mode is strictly local-first. There is no automatic cloud synchronization.
+*   **Manual Export/Import:** Users can manually export their workflows and custom agents to a JSON file for backup or sharing, and import them into another instance.
+*   **Future Selective Sync:** A future feature could allow users, upon explicitly logging into an account, to sync specific local projects to a central cloud store. This would always be a user-initiated action, not an automatic background process.
 
 ## 5. Benefits of "AgentricAI Lite"
 
-*   **Enhanced Privacy:** Sensitive data can be processed entirely on the user's machine without being sent to external cloud APIs (beyond the local LLM server itself, which is also user-controlled).
-*   **Offline Functionality:** Create, view, and modify workflows without an active internet connection (LLM processing still requires the local server to be running).
-*   **Cost Control:** No API token costs when using a local LLM.
-*   **Customization:** Users can experiment with various local models tailored to their specific needs.
+*   **Maximum Privacy:** Sensitive data is processed entirely on the user's machine without being sent to external cloud APIs.
+*   **Full Offline Functionality:** Create, view, modify, and save workflows without an active internet connection (LLM processing still requires the local server to be running).
+*   **Zero Cost:** No API token costs when using a local LLM.
+*   **Infinite Customization:** Users can experiment with any local model that fits their hardware and needs.
 *   **Reduced External Dependencies:** Less reliance on the availability and terms of third-party cloud services.
 
 ## 6. Limitations and Considerations
 
-*   **User Setup:** Requires users to install and manage their own local LLM server (e.g., LM Studio) and download models.
-*   **Model Capabilities:** The quality and features of the user's chosen local LLM will significantly impact the platform's effectiveness. Not all local models are as capable as leading cloud models like Gemini.
+*   **User Setup:** Requires users to install and manage their own local LLM server (e.g., LM Studio, Ollama) and download models.
+*   **Model Capabilities:** The quality and features of the user's chosen local LLM will significantly impact the platform's effectiveness.
 *   **Resource Intensive:** Running LLMs locally can be demanding on the user's CPU/GPU and RAM.
-*   **Feature Parity:** Achieving full feature parity with the online Gemini-powered version might be challenging, especially for specialized services like advanced image generation or web search.
-*   **Security of Local Endpoint:** Users are responsible for the security of their local LLM server endpoint if they expose it on their network.
+*   **Feature Parity:** Achieving full feature parity with the high-performance cloud version is not the goal. "Lite" mode prioritizes privacy and local control over access to every possible cloud-native feature.
+*   **Security of Local Endpoint:** Users are responsible for the security of their local LLM server endpoint.
 
-## 7. Integration with AgentricAI Studios Platform
-
-*   **LLM Service Abstraction (`llmService.ts`):** This is the core technical change, allowing AgentricAI Studios to route LLM requests based on the selected runtime.
-*   **Conditional UI Rendering:** Some UI elements or node functionalities may need to be conditionally rendered or behave differently based on the active runtime.
-*   **Error Handling:** Robust error handling to manage issues with connecting to the local LLM server or if the local model fails to process a request correctly.
-*   **Documentation:** Clear instructions for users on how to set up and use "Lite" mode with LM Studio or other compatible local servers.
-
-By thoughtfully implementing "AgentricAI Lite," AgentricAI Studios can cater to a broader range of user needs and preferences, reinforcing its commitment to innovation, security, and user empowerment.
+By offering this robust "AgentricAI Lite" architecture, the platform caters to a broader range of user needs and preferences, reinforcing its commitment to innovation, privacy, and user empowerment.

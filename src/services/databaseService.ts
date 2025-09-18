@@ -1,5 +1,3 @@
-
-
 import initSqlJs from 'sql.js';
 import type { Database } from 'sql.js';
 import type { DynamicNodeConfig, NodeData, Edge, SavedWorkflow, EventLog, BugReport } from '../core/types';
@@ -175,15 +173,12 @@ class DatabaseService {
             const result = stmt.getAsObject({ ':name': name });
             if (Object.keys(result).length === 0) return null;
 
-            const nodesStr = result.nodes as string | null;
-            const edgesStr = result.edges as string | null;
+            // Gracefully handle null values from the DB by defaulting to an empty array string.
+            const nodesStr = (result.nodes as string | null) ?? '[]';
+            const edgesStr = (result.edges as string | null) ?? '[]';
 
-            if (typeof nodesStr !== 'string' || typeof edgesStr !== 'string') {
-                console.error(`Corrupted workflow data for "${name}": nodes or edges are not valid strings. Deleting entry.`);
-                await this.deleteWorkflow(name);
-                return null;
-            }
-
+            // The real corruption check is whether the string can be parsed as JSON.
+            // The previous `typeof` check was too aggressive and deleted valid empty entries.
             const nodes = JSON.parse(nodesStr);
             const edges = JSON.parse(edgesStr);
     
@@ -194,8 +189,8 @@ class DatabaseService {
                 lastSaved: result.lastSaved as string,
             };
         } catch (e) {
-            console.error(`Failed to load or parse workflow "${name}":`, e);
-            await this.deleteWorkflow(name);
+            console.error(`Failed to load or parse workflow "${name}". It might be corrupted. Deleting entry. Error:`, e);
+            await this.deleteWorkflow(name); // Deletion is now only for actual parsing errors.
             return null;
         } finally {
             stmt?.free();
@@ -211,12 +206,10 @@ class DatabaseService {
                 for (const row of results[0].values) {
                     const name = row[0] as string;
                     try {
-                        const nodesStr = row[1] as string | null;
-                        const edgesStr = row[2] as string | null;
-                        if (typeof nodesStr !== 'string' || typeof edgesStr !== 'string') {
-                           console.error(`Skipping corrupted workflow "${name}": data is not a valid string.`);
-                           continue;
-                        }
+                        // Gracefully handle null values from the DB by defaulting to an empty array string.
+                        const nodesStr = (row[1] as string | null) ?? '[]';
+                        const edgesStr = (row[2] as string | null) ?? '[]';
+                        
                         const nodes = JSON.parse(nodesStr);
                         const edges = JSON.parse(edgesStr);
 
@@ -228,6 +221,7 @@ class DatabaseService {
                         };
                     } catch (e) {
                         console.error(`Skipping corrupted workflow "${name}" due to parsing error:`, e);
+                        // Do not delete from here, just skip loading. Let the user manage it.
                     }
                 }
             }

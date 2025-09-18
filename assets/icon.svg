@@ -1,0 +1,18 @@
+<svg width="512" height="512" viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="glowGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#0BC7D0; stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#8a4BAE; stop-opacity:1" />
+    </linearGradient>
+  </defs>
+  <rect width="120" height="120" rx="20" fill="#111827"/>
+  <g transform="translate(60 60) scale(0.8) translate(-60 -60)">
+      <g>
+          <path d="M60 10A15 15 90 0 1 60 25A15 15 270 0 1 60 10Z" fill="url(#glowGradient)" transform="rotate(30 60 60)"/>
+          <path d="M60 10A15 15 90 0 1 60 25A15 15 270 0 1 60 10Z" fill="url(#glowGradient)" transform="rotate(150 60 60)"/>
+          <path d="M60 10A15 15 90 0 1 60 25A15 15 270 0 1 60 10Z" fill="url(#glowGradient)" transform="rotate(270 60 60)"/>
+          <circle cx="60" cy="60" r="12" fill="#1A0F2B" stroke="#0BD7D0" stroke-width="2"/>
+          <circle cx="60" cy="60" r="5" fill="url(#glowGradient)"/>
+      </g>
+  </g>
+</svg>

@@ -1,5 +1,3 @@
-
-
 import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import { initialSystemAgents } from './src/core/agentDefinitions';
 import type { NodeData, Edge, DynamicNodeConfig, Point, Environment, LlmServiceConfig, ExecutionHistoryEntry, SavedWorkflow, ExecutionRuntime, AiMode, ContextMemory } from './src/core/types';
@@ -99,9 +97,9 @@ const AgenticStudioApp: React.FC = () => {
   // --- Initialization ---
   useEffect(() => {
     const initializeApp = async () => {
-        // FIX: The `init` method of `mechanicService` expects 0 arguments.
-        await mechanicService.init();
+        // Initialize services that require async setup
         await databaseService.init();
+        await mechanicService.init();
         
         const storedWorkflows = await databaseService.loadWorkflows();
         if(storedWorkflows) { setSavedWorkflows(storedWorkflows); }

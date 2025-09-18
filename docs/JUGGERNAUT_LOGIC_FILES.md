@@ -1,11 +1,20 @@
-
 # AgentricAI Studios: Juggernaut Agent Logic Files
 
-## Introduction
+## Introduction & Agent Integrity Protocol
 
 This document serves as the definitive, "ironclad" manifest of the core execution logic for every dynamic "Juggernaut" system agent within AgentricAI Studios. The detailed prompts listed here are the "source code" for each agent's brain. They are stored as configuration within `src/core/agentDefinitions.tsx` and executed by the universal `dynamicNode.ts` engine.
 
 This file exists to provide absolute clarity and verification that the unique, nuanced, and detailed logic crafted for each agent is not lost, simplified, or abstracted away—it is preserved in its entirety and is fundamental to the platform's operation.
+
+### Agent Validation and Integrity (Conceptual)
+
+To ensure the security and stability of the platform, all Juggernaut agent definitions, particularly the immutable administrative agents, undergo a conceptual **integrity validation process** upon system initialization.
+
+1.  **Configuration Hashing:** A cryptographic hash (e.g., SHA-256) is computed from the canonical JSON representation of each agent's configuration object (`DynamicNodeConfig`).
+2.  **Signature Verification:** This hash is then conceptually compared against a stored, signed manifest. If the computed hash for any immutable agent does not match its signed hash, it indicates that the agent's core logic or configuration has been tampered with.
+3.  **Failsafe on Mismatch:** In the event of a validation failure, the system will refuse to boot, entering a secure maintenance mode and logging a critical security alert.
+
+This protocol ensures that the foundational logic of the system's most critical agents cannot be altered without authorization, forming a core part of the platform's security posture.
 
 ---
 ## Table of Contents

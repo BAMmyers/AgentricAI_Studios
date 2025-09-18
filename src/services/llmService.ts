@@ -1,4 +1,3 @@
-
 import { GoogleGenAI, GenerateContentResponse, GroundingMetadata } from "@google/genai";
 import type { DynamicNodeConfig, LlmRuntimeType, LlmServiceConfig, LocalEndpointSettings } from '../core/types';
 

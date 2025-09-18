@@ -1,5 +1,3 @@
-
-
 import React, { useState, useCallback, useRef, useEffect } from 'react';
 import NodeLibraryPanel from './panels/NodeLibraryPanel';
 import HistoryPanel from './panels/HistoryPanel';
@@ -93,9 +91,9 @@ const Sidebar: React.FC<SidebarProps> = (props) => {
       style={{ width: isCollapsed ? '48px' : `${width}px`, transition: 'width 0.2s ease-in-out' }}
     >
       <div className="w-12 h-full bg-black bg-opacity-30 flex flex-col items-center py-4 space-y-4 flex-shrink-0">
-        <SidebarButton icon="キュー" label="Queue" isActive={activePanel === 'history'} onClick={() => setActivePanel('history')} />
-        <SidebarButton icon="ノード" label="Node Library" isActive={activePanel === 'nodes'} onClick={() => setActivePanel('nodes')} />
-        <SidebarButton icon="保存" label="Workflows" isActive={activePanel === 'workflows'} onClick={() => setActivePanel('workflows')} />
+        <SidebarButton icon="📜" label="History" isActive={activePanel === 'history'} onClick={() => setActivePanel('history')} />
+        <SidebarButton icon="📚" label="Node Library" isActive={activePanel === 'nodes'} onClick={() => setActivePanel('nodes')} />
+        <SidebarButton icon="📁" label="Workflows" isActive={activePanel === 'workflows'} onClick={() => setActivePanel('workflows')} />
         {props.aiMode === 'chat' && (
              <SidebarButton icon="💬" label="Chat" isActive={activePanel === 'chat'} onClick={() => setActivePanel('chat')} />
         )}
@@ -134,7 +132,7 @@ const SidebarButton: React.FC<{ icon: string; label: string; isActive: boolean; 
     }`}
     title={label}
   >
-    <span className="text-xl font-bold tracking-tighter">{icon}</span>
+    <span className="text-xl">{icon}</span>
   </button>
 );
 

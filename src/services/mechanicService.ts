@@ -1,5 +1,5 @@
-
 import { llmService } from './llmService';
+import { databaseService } from './databaseService';
 import type { BugReport } from '../core/types';
 
 type BugListener = (bugs: Map<string, BugReport>) => void;
@@ -8,7 +8,22 @@ class MechanicService {
   private bugDatabase = new Map<string, BugReport>();
   private listeners = new Set<BugListener>();
 
-  public init() {
+  public async init() {
+    // --- Load Persistent Bugs from Database ---
+    try {
+        await databaseService.init(); // Ensure DB is ready
+        const storedBugs = await databaseService.loadBugReports();
+        storedBugs.forEach(bug => {
+            // If a bug is re-logged on startup before this, the stored one will overwrite it,
+            // which is fine as it preserves the count and original timestamp.
+            this.bugDatabase.set(bug.id, bug);
+        });
+        this.notifyListeners();
+        console.log(`🔧 The Mechanic loaded ${storedBugs.length} persistent bug reports from the database.`);
+    } catch (e) {
+        console.error("The Mechanic failed to load persistent bugs:", e);
+    }
+    
     // --- Global Error Listener ---
     window.onerror = (message, source, lineno, colno, error) => {
       if (error) {
@@ -32,6 +47,7 @@ class MechanicService {
   public logBug = (error: Error, context: string = "No context provided") => {
     // Create a consistent ID for grouping identical errors
     const bugId = `${error.message.split('\n')[0]}:${error.stack?.split('\n')[1]?.trim() || ''}`;
+    let bugToPersist: BugReport;
 
     if (this.bugDatabase.has(bugId)) {
       // Increment count for existing bug
@@ -39,6 +55,7 @@ class MechanicService {
       existingBug.count += 1;
       existingBug.timestamp = new Date().toISOString();
       this.bugDatabase.set(bugId, existingBug);
+      bugToPersist = existingBug;
     } else {
       // Create new bug report
       const newBug: BugReport = {
@@ -55,7 +72,11 @@ class MechanicService {
       };
       this.bugDatabase.set(bugId, newBug);
       this.fetchSuggestionForBug(bugId);
+      bugToPersist = newBug;
     }
+    
+    // Persist the updated or new bug report to the database
+    databaseService.saveBugReport(bugToPersist).catch(e => console.error("Failed to persist bug report:", e));
 
     this.notifyListeners();
   }
@@ -80,6 +101,7 @@ class MechanicService {
     } finally {
       bug.isSuggestionLoading = false;
       this.bugDatabase.set(bugId, bug);
+      databaseService.saveBugReport(bug).catch(e => console.error("Failed to persist bug suggestion:", e));
       this.notifyListeners();
     }
   }
@@ -93,6 +115,7 @@ class MechanicService {
     if (bug && bug.status === 'new') {
         bug.status = 'seen';
         this.bugDatabase.set(bugId, bug);
+        databaseService.saveBugReport(bug).catch(e => console.error("Failed to persist bug status update:", e));
         this.notifyListeners();
     }
   }

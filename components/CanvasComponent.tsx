@@ -1,5 +1,3 @@
-
-
 import React, { useState, useCallback, useEffect, ForwardedRef, useMemo, useRef } from 'react';
 import type { NodeData, Edge, Point, Port } from '../src/core/types';
 // Renamed CanvasComponentProps from App to avoid conflict with local definition
@@ -89,6 +87,7 @@ const CanvasComponent = React.forwardRef<HTMLDivElement, CanvasComponentProps>(
     setNodes,
     onAddEdge,
     onInteractionEnd,
+    onAddNode,
     executeNode,
     updateNodeInternalState,
     onRemoveNode,
@@ -488,6 +487,25 @@ const CanvasComponent = React.forwardRef<HTMLDivElement, CanvasComponentProps>(
     }, [handleMouseUp]);
 
 
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'copy';
+  };
+  
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    const data = e.dataTransfer.getData('application/json');
+    if (data) {
+        try {
+            const agentConfig = JSON.parse(data);
+            const worldPoint = viewportToWorld(e.clientX, e.clientY);
+            onAddNode(agentConfig, worldPoint);
+        } catch (error) {
+            console.error("Failed to parse dropped node data:", error);
+        }
+    }
+  };
+
   const getEdgeColor = (sourceDataType: Port['dataType'], targetDataType: Port['dataType']): string => {
     if (sourceDataType === 'any' && targetDataType === 'any') return DEFAULT_EDGE_COLOR;
     if (sourceDataType === 'any') return DATA_TYPE_STROKE_COLORS[targetDataType] || DEFAULT_EDGE_COLOR;
@@ -555,6 +573,8 @@ const CanvasComponent = React.forwardRef<HTMLDivElement, CanvasComponentProps>(
       onTouchStart={handleTouchStart}
       onTouchMove={handleTouchMove}
       onTouchEnd={handleTouchEnd}
+      onDragOver={handleDragOver}
+      onDrop={handleDrop}
       tabIndex={0}
       style={{ touchAction: 'none' }}
     >
